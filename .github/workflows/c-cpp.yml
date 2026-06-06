@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ vlm_master ]
 
+# Cancel superseded runs on the same ref (e.g. when pushing fixups to a PR)
+# so we don't burn runner time finishing stale builds.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     permissions:
@@ -13,9 +19,14 @@ jobs:
       pull-requests: write
 
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
     - uses: actions/checkout@v4
+    - name: enable parallel make
+      # Propagate -j<ncpu> to every make invocation below (including the
+      # sub-makes spawned by `make distcheck`) via MAKEFLAGS.
+      run: echo "MAKEFLAGS=-j$(nproc)" >> "$GITHUB_ENV"
     - name: preconf
       run: autoreconf -ivf
     - name: configure
