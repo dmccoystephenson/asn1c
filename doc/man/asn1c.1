@@ -35,7 +35,7 @@ other encoding rules.
 .TP
 \-E
 Run the ASN.1 parsing stage only.
-Print the reconstructed ASN.1 tre (text).
+Print the reconstructed ASN.1 tree (text).
 .TP
 \-F
 Used together with \f[B]\-E\f[R], instructs the compiler to stop after
@@ -67,7 +67,7 @@ Treat warnings as errors; abort if any warning is produced.
 Enable lexer debugging during the ASN.1 lexing stage.
 .TP
 \-Wdebug\-parser
-Enable lexer debugging during the ASN.1 parsing stage.
+Enable parser debugging during the ASN.1 parsing stage.
 .TP
 \-Wdebug\-fixer
 Enable ASN.1 syntax tree fixer debugging during the fixing stage.
@@ -307,7 +307,7 @@ jer_encode()
 T}@T{
 JER
 T}@T{
-jer_decode_
+jer_decode()
 T}
 T{
 CBOR
@@ -357,11 +357,11 @@ T}
 T{
 *\-APER
 T}@T{
-\f[I]not supported\f[R]
+aper_encode()
 T}@T{
 *\-APER
 T}@T{
-\f[I]not supported\f[R]
+aper_decode()
 T}
 T{
 BASIC\-XER
