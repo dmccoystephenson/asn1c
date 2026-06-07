@@ -10,6 +10,15 @@
 	  `memset` that clears `a1f_replace_me_with_proper_interface_arg`, so
 	  compiler-phase lookups now correctly inherit caller-supplied flags.
 
+	DOCUMENTATION:
+	* Fixed several inaccuracies in the asn1c(1) man page and the CLI
+	  usage string: corrected the APER row in the encoding/decoding table
+	  (was wrongly shown as "not supported" although aper_encode()/
+	  aper_decode() exist), fixed the truncated `jer_decode()` entry,
+	  corrected the `-Wdebug-parser` description (said "lexer"), fixed a
+	  "tre"->"tree" typo under `-E`, and updated the `-no-gen-CBOR` usage
+	  string to cite RFC 8949 (RFC 7049 is obsolete).
+
 1.3.6:
 	FIXES:
 	* Initialize `char ch` before taking its address in

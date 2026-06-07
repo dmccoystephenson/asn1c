@@ -26,7 +26,7 @@ CBOR and other encoding rules.
 ## Stage Selection Options
 
 -E
-:   Run the ASN.1 parsing stage only. Print the reconstructed ASN.1 tre (text).
+:   Run the ASN.1 parsing stage only. Print the reconstructed ASN.1 tree (text).
 
 -F
 :   Used together with **-E**,
@@ -60,7 +60,7 @@ CBOR and other encoding rules.
 :   Enable lexer debugging during the ASN.1 lexing stage.
 
 -Wdebug-parser
-:   Enable lexer debugging during the ASN.1 parsing stage.
+:   Enable parser debugging during the ASN.1 parsing stage.
 
 -Wdebug-fixer
 :   Enable ASN.1 syntax tree fixer debugging during the fixing stage.
@@ -247,7 +247,7 @@ DER            der_encode()       DER, BER      ber_decode()
 
 CER            _not supported_    CER, BER      ber_decode()
 
-JER			   jer_encode()	      JER           jer_decode_
+JER			   jer_encode()	      JER           jer_decode()
 
 CBOR           cbor_encode()      CBOR          cbor_decode()
 
@@ -259,7 +259,7 @@ BASIC-UPER     uper_encode()      *-UPER        uper_decode()
 
 CANONICAL-UPER uper_encode()      *-UPER        uper_decode()
 
-*-APER         _not supported_    *-APER        _not supported_
+*-APER         aper_encode()      *-APER        aper_decode()
 
 BASIC-XER      xer_encode(...)    *-XER         xer_decode()
 
