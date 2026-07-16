@@ -34,11 +34,22 @@ jobs:
     - name: make
       run: make
     - name: make check
-      run: make check
+      run: make check || { find . -name 'test-suite.log' | xargs cat; exit 1; }
     - name: make distcheck
-      run: make distcheck
+      run: make distcheck || { find . -name 'test-suite.log' | xargs cat; exit 1; }
+    - name: upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs
+        path: |
+          **/test-suite.log
+          **/*.log
+        retention-days: 7
     - name: test PKIX1 example - generate codecs and test all supported formats
+      shell: bash
       run: |
+        set -euo pipefail
         cd examples/sample.source.PKIX1
         # Generate C codecs from PKIX1 ASN.1 schemas for all supported encoding formats:
         # BER/DER, XER, OER, PER/UPER, APER, JER, CBOR
