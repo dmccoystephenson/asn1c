@@ -18,6 +18,13 @@
 	  corrected the `-Wdebug-parser` description (said "lexer"), fixed a
 	  "tre"->"tree" typo under `-E`, and updated the `-no-gen-CBOR` usage
 	  string to cite RFC 8949 (RFC 7049 is obsolete).
+	* Replaced the unfilled GitHub SECURITY.md template (fake 5.1.x/5.0.x/
+	  4.0.x version table and generic placeholder prose) with real content
+	  describing the supported branch, the actual security surface
+	  (generated skeleton/runtime code vs. the compiler binary), and how
+	  to report a vulnerability. Flagged ENCODING_CONTROL_SUMMARY.md as a
+	  superseded historical PR record, pointing to ENCODING_CONTROL_STATUS.md
+	  for the current, accurate ENCODING-CONTROL implementation status.
 
 1.3.6:
 	FIXES:
