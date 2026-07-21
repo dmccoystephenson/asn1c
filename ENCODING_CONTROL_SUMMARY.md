@@ -1,5 +1,12 @@
 # Pull Request Summary: Complete ENCODING-CONTROL Support - Phases 4-6
 
+> **Historical record — superseded.** This document describes the state of a
+> since-merged PR that deferred Phases 4-6 (body parsing, type linking, custom
+> encoder generation). Those phases are now implemented; see
+> [ENCODING_CONTROL_STATUS.md](ENCODING_CONTROL_STATUS.md) for the current,
+> accurate status. The "What's Deferred and Why" section below no longer
+> reflects the codebase.
+
 ## Overview
 
 This PR addresses the issues from PR #387 and establishes the complete infrastructure for ENCODING-CONTROL support, setting the foundation for full implementation of Phases 4-6.
