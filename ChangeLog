@@ -211,6 +211,17 @@ Changes since v1.5.0:
 	  to report a vulnerability. Flagged ENCODING_CONTROL_SUMMARY.md as a
 	  superseded historical PR record, pointing to ENCODING_CONTROL_STATUS.md
 	  for the current, accurate ENCODING-CONTROL implementation status.
+	* Corrected doc/docsrc/asn1c-usage.tex, which described `-Wdebug-lexer`
+	  as debugging the ASN.1 parsing stage; it debugs the lexing stage, as
+	  asn1c.c and asn1c(1) already said.  Added
+	  tests/tests-asn1c-smoke/check-debug-option-docs.sh, which asserts that
+	  the `-Wdebug-lexer`/`-Wdebug-parser` descriptions in asn1c.c,
+	  doc/man/asn1c.man.md, and doc/docsrc/asn1c-usage.tex stay in agreement,
+	  so this particular drift cannot silently come back.
+	* Added doc/man/*.man.md to EXTRA_DIST.  They are the pandoc sources for
+	  the installed man pages and are read by the check above, but were
+	  missing from the distribution tarball, so `make distcheck` could not
+	  find them.
 
 1.3.6:
 	FIXES:

@@ -25,6 +25,10 @@ contains_all() {
     return 0
 }
 
+for f in "${SRC_MAIN}" "${DOC_MAN_MD}" "${DOC_USAGE_TEX}"; do
+    [ -f "$f" ] || die "$f not found (moved, renamed, or missing from EXTRA_DIST?)"
+done
+
 main_lexer_line=$(grep 'Wdebug-lexer' "${SRC_MAIN}" | head -n 1 || true)
 main_parser_line=$(grep 'Wdebug-parser' "${SRC_MAIN}" | head -n 1 || true)
 
