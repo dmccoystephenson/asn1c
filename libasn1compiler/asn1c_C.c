@@ -73,8 +73,11 @@ static void pregenerate_nested_typedefs(arg_t *arg, asn1p_expr_t *parent_expr, i
 
 /* Custom XER encoder/decoder generation for ENCODING-CONTROL */
 static int type_needs_custom_xer_encoder(arg_t *arg, asn1p_expr_t *expr);
+static int type_needs_custom_jer_encoder(arg_t *arg, asn1p_expr_t *expr);
 static int emit_custom_xer_encoder(arg_t *arg, asn1p_expr_t *expr);
 static int emit_custom_xer_decoder(arg_t *arg, asn1p_expr_t *expr);
+static int emit_custom_jer_encoder(arg_t *arg, asn1p_expr_t *expr);
+static int emit_custom_jer_decoder(arg_t *arg, asn1p_expr_t *expr);
 static int emit_custom_operation_structure(arg_t *arg, asn1p_expr_t *expr);
 static const char *encoding_type_description(enum asn1p_encoding_control_type_e type);
 
@@ -173,7 +176,13 @@ asn1c_lang_C_type_common_INTEGER(arg_t *arg) {
 	asn1p_expr_t *v;
 	int el_count = expr_elements_count(arg, expr);
 	struct value2enum *v2e;
-	int map_extensions = (expr->expr_type == ASN_BASIC_INTEGER);
+	int map_extensions = 0;
+	int needs_text_map =
+		(expr->expr_type == ASN_BASIC_ENUMERATED)
+		|| (expr->expr_type == ASN_BASIC_INTEGER
+		    && el_count
+		    && expr->encoding_control.encoding_type == EC_XER_TEXT);
+	int emitted_integer_specifics = 0;
 	int eidx;
 	int saved_target = arg->target->target;
 
@@ -196,7 +205,9 @@ asn1c_lang_C_type_common_INTEGER(arg_t *arg) {
 				OUT("\t= %s%s\n",
 					asn1p_itoa(v->value->value.v_integer),
 					(eidx+1 < el_count) ? "," : "");
-				v2e[eidx].name = v->Identifier;
+				v2e[eidx].name = v->encoding_control.replacement
+					? v->encoding_control.replacement
+					: v->Identifier;
 				v2e[eidx].value = v->value->value.v_integer;
 				eidx++;
 				break;
@@ -217,11 +228,15 @@ asn1c_lang_C_type_common_INTEGER(arg_t *arg) {
 	}
 
 	/*
-	 * For all ENUMERATED types print out a mapping table
-	 * between identifiers and associated values.
-	 * This is prohibited for INTEGER types by by X.693:8.3.4.
+	 * For all ENUMERATED types, and for INTEGER named numbers with an
+	 * explicit XER TEXT instruction, print a mapping table between
+	 * identifiers and associated values.
 	 */
-	if(expr->expr_type == ASN_BASIC_ENUMERATED) {
+	if(needs_text_map) {
+		int fw = 0, fu = 0;
+
+		if(expr->expr_type == ASN_BASIC_INTEGER)
+			asn1c_int_native_specifics(arg, expr, &fw, &fu);
 
 		/*
 		 * Generate a enumerationName<->value map for XER codec.
@@ -230,7 +245,25 @@ asn1c_lang_C_type_common_INTEGER(arg_t *arg) {
 
 		OUT("static const asn_INTEGER_enum_map_t asn_MAP_%s_value2enum_%d[] = {\n",
 			MKID(expr), expr->_type_unique_index);
-		qsort(v2e, el_count, sizeof(v2e[0]), compar_enumMap_byValue);
+		/*
+		 * Root members and extension additions occupy disjoint
+		 * segments of value2enum, delimited by map_extensions - 1
+		 * (see below). Sort each segment independently by value
+		 * so that the runtime's extension-boundary index (based on
+		 * declaration order) keeps pointing at the segment split
+		 * regardless of how root/extension values interleave
+		 * numerically (X.691 #14.1: root and extension additions
+		 * are indexed independently).
+		 */
+		if(map_extensions) {
+			int root_count = map_extensions - 1;
+			qsort(v2e, root_count, sizeof(v2e[0]),
+				compar_enumMap_byValue);
+			qsort(v2e + root_count, el_count - root_count,
+				sizeof(v2e[0]), compar_enumMap_byValue);
+		} else {
+			qsort(v2e, el_count, sizeof(v2e[0]), compar_enumMap_byValue);
+		}
 		for(eidx = 0; eidx < el_count; eidx++) {
 			v2e[eidx].idx = eidx;
 			OUT("\t{ %s,\t%ld,\t\"%s\" }%s\n",
@@ -329,15 +362,24 @@ asn1c_lang_C_type_common_INTEGER(arg_t *arg) {
 			OUT("1,\t/* Strict enumeration */\n");
 		else
 			OUT("0,\n");
-		OUT("0,\t/* Native long size */\n");
-		OUT("0\n");
+		if(expr->expr_type == ASN_BASIC_ENUMERATED) {
+			OUT("0,\t/* Native long size */\n");
+			OUT("0\n");
+		} else {
+			OUT("%d,\t/* Native integer width in octets */\n", fw);
+			OUT("%d\t/* %s representation */\n",
+				fu, fu ? "Unsigned" : "Signed");
+		}
 		INDENT(-1);
 		OUT("};\n");
+		if(expr->expr_type == ASN_BASIC_INTEGER)
+			emitted_integer_specifics = 1;
 	}
 
 	{
 		int fw = 0, fu = 0;
 		if(expr->expr_type == ASN_BASIC_INTEGER
+		   && !emitted_integer_specifics
 		   && asn1c_int_native_specifics(arg, expr, &fw, &fu)) {
 			REDIR(OT_STAT_DEFS);
 			if(!(expr->_type_referenced)) OUT("static ");
@@ -389,6 +431,26 @@ asn1c_lang_C_type_BIT_STRING(arg_t *arg) {
 		}
 		OUT("} %s;\n", c_name(arg).members_name);
 		assert(eidx == el_count);
+
+		/*
+		 * X.680 #22.7 permits treating trailing 0 bits as
+		 * insignificant only for BIT STRING types which have a
+		 * NamedBitList. Emit a per-type specifics structure so the
+		 * UPER encoder (BIT_STRING_encode_uper) can tell this type
+		 * apart from a plain BIT STRING, which must preserve
+		 * trailing 0 bits verbatim.
+		 */
+		REDIR(OT_STAT_DEFS);
+		if(!(expr->_type_referenced)) OUT("static ");
+		OUT("const asn_OCTET_STRING_specifics_t asn_SPC_%s_specs_%d = {\n",
+			c_name(arg).part_name, expr->_type_unique_index);
+		INDENT(+1);
+		OUT("sizeof(BIT_STRING_t),\n");
+		OUT("offsetof(BIT_STRING_t, _asn_ctx),\n");
+		OUT("ASN_OSUBV_BIT,\n");
+		OUT("1\t/* Has NamedBitList: trailing 0 bits are insignificant */\n");
+		INDENT(-1);
+		OUT("};\n");
 	}
 
 	REDIR(saved_target);
@@ -1097,6 +1159,8 @@ asn1c_lang_C_type_SEx_OF(arg_t *arg) {
 	    * its own descriptor (carrying field_width specifics). */
 	   || (memb->expr_type == ASN_BASIC_INTEGER
 	       && asn1c_int_native_specifics(arg, memb, &_ofw, &_ofu))
+	   || type_needs_custom_xer_encoder(arg, memb)
+	   || type_needs_custom_jer_encoder(arg, memb)
 	   || ((memb->expr_type == ASN_BASIC_INTEGER || memb->expr_type == A1TC_REFERENCE)
 	       && !strcmp(asn1c_type_name(arg, memb, TNF_CTYPE), "unsigned long"))
 	   || (memb_ioc.ioct && is_open_type(arg, memb, &memb_ioc))
@@ -1843,11 +1907,13 @@ asn1c_lang_C_type_SIMPLE_TYPE(arg_t *arg) {
 	}
 
 	if((expr->expr_type == ASN_BASIC_ENUMERATED)
-	|| (0 /* -- prohibited by X.693:8.3.4 */
-		&& expr->expr_type == ASN_BASIC_INTEGER
-		&& expr_elements_count(arg, expr))
+	|| (expr->expr_type == ASN_BASIC_INTEGER
+		&& expr_elements_count(arg, expr)
+		&& expr->encoding_control.encoding_type == EC_XER_TEXT)
 	|| fits_unsigned_integer
 	|| asn1c_REAL_fits(arg, expr) == RL_FITS_FLOAT32
+	|| (expr->expr_type == ASN_BASIC_BIT_STRING
+		&& expr_elements_count(arg, expr))
 	)
 		etd_spec = ETD_HAS_SPECIFICS;
 	else
@@ -1857,7 +1923,9 @@ asn1c_lang_C_type_SIMPLE_TYPE(arg_t *arg) {
 	 * If this type just blindly refers the other type, alias it.
 	 * 	Type1 ::= Type2
 	 */
-	if(arg->embed && etd_spec == ETD_NO_SPECIFICS) {
+	if(arg->embed && etd_spec == ETD_NO_SPECIFICS
+	&& !type_needs_custom_xer_encoder(arg, expr)
+	&& !type_needs_custom_jer_encoder(arg, expr)) {
 		REDIR(saved_target);
 		return 0;
 	}
@@ -1924,11 +1992,63 @@ asn1c_lang_C_type_SIMPLE_TYPE(arg_t *arg) {
 		tv_mode, tags_count, all_tags_count);
 
 	/*
-	 * Emit custom XER encoder/decoder if type has encoding controls
+	 * Semantic check: XER encoding instructions (BASE64, UTF8, HEXADECIMAL)
+	 * may only be applied to OCTET STRING.  A [BASE64] prefix on an INTEGER
+	 * or any other type is a hard compile error per X.693 applicability rules.
+	 */
+	if(expr->encoding_control.encoding_type != EC_NONE) {
+		asn1p_expr_type_e etype = expr_get_type(arg, expr);
+		int ok = 0;
+		switch(expr->encoding_control.encoding_type) {
+		case EC_XER_HEXADECIMAL:
+		case EC_XER_BASE64:
+		case EC_XER_UTF8:
+		case EC_JER_BASE64:
+			ok = (etype == ASN_BASIC_OCTET_STRING || etype == A1TC_REFERENCE);
+			break;
+		case EC_XER_DECIMAL:
+			ok = (etype == ASN_BASIC_REAL || etype == A1TC_REFERENCE);
+			break;
+		case EC_XER_TEXT:
+			ok = (etype == ASN_BASIC_BOOLEAN
+			      || etype == ASN_BASIC_ENUMERATED
+			      || etype == ASN_BASIC_INTEGER
+			      || etype == ASN_BASIC_BIT_STRING
+			      || etype == A1TC_REFERENCE);
+			break;
+		case EC_JER_TEXT:
+		case EC_JER_NAME:
+		case EC_XER_GLOBAL_DEFAULTS_MODIFIED_ENCODINGS:
+		case EC_NONE:
+		default:
+			ok = 1;
+			break;
+		}
+		if(!ok) {
+			fprintf(stderr,
+				"ERROR: encoding instruction '%s' at %s:%d "
+				"is not applicable to %s\n",
+				encoding_type_description(expr->encoding_control.encoding_type),
+				expr->module ? expr->module->source_file_name : "?",
+				expr->_lineno,
+				ASN_EXPR_TYPE2STR(expr->expr_type));
+			return -1;
+		}
+	}
+
+	/*
+	 * Emit custom XER/JER encoder/decoder if type has encoding controls.
 	 */
 	if(type_needs_custom_xer_encoder(arg, expr)) {
 		emit_custom_xer_encoder(arg, expr);
 		emit_custom_xer_decoder(arg, expr);
+	}
+	if(type_needs_custom_jer_encoder(arg, expr)) {
+		emit_custom_jer_encoder(arg, expr);
+		emit_custom_jer_decoder(arg, expr);
+	}
+	if(type_needs_custom_xer_encoder(arg, expr)
+	|| type_needs_custom_jer_encoder(arg, expr)) {
 		emit_custom_operation_structure(arg, expr);
 	}
 
@@ -1966,6 +2086,10 @@ asn1c_lang_C_type_SIMPLE_TYPE(arg_t *arg) {
                 OUT("extern const asn_INTEGER_specifics_t "
                     "asn_SPC_%s_specs_%d;\n",
                     MKID(expr), expr->_type_unique_index);
+            } else if(expr->expr_type == ASN_BASIC_BIT_STRING) {
+                OUT("extern const asn_OCTET_STRING_specifics_t "
+                    "asn_SPC_%s_specs_%d;\n",
+                    MKID(expr), expr->_type_unique_index);
             } else {
                 asn1p_expr_t *terminal = WITH_MODULE_NAMESPACE(
                     expr->module, expr_ns,
@@ -1985,11 +2109,13 @@ asn1c_lang_C_type_SIMPLE_TYPE(arg_t *arg) {
             OUT("ber_type_decoder_f %s_decode_ber;\n", p);
             OUT("der_type_encoder_f %s_encode_der;\n", p);
         }
-        if(arg->flags & A1C_GEN_XER) {
+        if(arg->flags & A1C_GEN_XER
+           && !type_needs_custom_xer_encoder(arg, expr)) {
             OUT("xer_type_decoder_f %s_decode_xer;\n", p);
             OUT("xer_type_encoder_f %s_encode_xer;\n", p);
         }
-        if(arg->flags & A1C_GEN_JER) {
+        if(arg->flags & A1C_GEN_JER
+           && !type_needs_custom_jer_encoder(arg, expr)) {
             OUT("jer_type_encoder_f %s_encode_jer;\n", p);
         }
         if(arg->flags & A1C_GEN_CBOR) {
@@ -2404,20 +2530,46 @@ static int
 type_needs_custom_xer_encoder(arg_t *arg, asn1p_expr_t *expr) {
     if(!expr) return 0;
     
-    /* Only applicable to OCTET STRING types */
     asn1p_expr_type_e etype = expr_get_type(arg, expr);
-    if(etype != ASN_BASIC_OCTET_STRING) {
-        return 0;
-    }
     
     /* Check if encoding control is set */
     switch(expr->encoding_control.encoding_type) {
-    case EC_XER_HEXADECIMAL:
-    case EC_XER_UTF8:
-        /* These need custom encoders (Base64 is default) */
-        return 1;
     case EC_XER_BASE64:
+    case EC_XER_UTF8:
+        if(etype != ASN_BASIC_OCTET_STRING) return 0;
+        /* These need custom encoders (hex is the default). */
+        return 1;
+    case EC_XER_HEXADECIMAL:
+        if(etype != ASN_BASIC_OCTET_STRING) return 0;
+        /*
+         * Hex is the default, but we still generate a thin custom encoder
+         * that masks XER_F_BASE64 out of the flags.  Without this, a caller
+         * passing XER_F_BASE64 at runtime would silently override a schema-
+         * level ENCODING-CONTROL XER ::= hexadecimal instruction.
+         * Schema intent beats runtime convenience flags.
+         */
+        return 1;
+    case EC_XER_TEXT:
+        return etype == ASN_BASIC_BOOLEAN
+            || etype == ASN_BASIC_ENUMERATED
+            || etype == ASN_BASIC_INTEGER
+            || etype == ASN_BASIC_BIT_STRING;
+    case EC_XER_DECIMAL:
+        return etype == ASN_BASIC_REAL;
     case EC_NONE:
+    default:
+        return 0;
+    }
+}
+
+static int
+type_needs_custom_jer_encoder(arg_t *arg, asn1p_expr_t *expr) {
+    asn1p_expr_type_e etype;
+    if(!expr) return 0;
+    etype = expr_get_type(arg, expr);
+    switch(expr->encoding_control.encoding_type) {
+    case EC_JER_BASE64:
+        return etype == ASN_BASIC_OCTET_STRING;
     default:
         return 0;
     }
@@ -2432,6 +2584,13 @@ encoding_type_description(enum asn1p_encoding_control_type_e type) {
     case EC_XER_HEXADECIMAL: return "hexadecimal";
     case EC_XER_UTF8: return "utf8";
     case EC_XER_BASE64: return "base64";
+    case EC_XER_TEXT: return "text";
+    case EC_XER_DECIMAL: return "decimal";
+    case EC_XER_GLOBAL_DEFAULTS_MODIFIED_ENCODINGS:
+        return "global-defaults modified-encodings";
+    case EC_JER_BASE64: return "jer-base64";
+    case EC_JER_TEXT: return "jer-text";
+    case EC_JER_NAME: return "jer-name";
     case EC_NONE:
     default: return "none";
     }
@@ -2447,7 +2606,57 @@ emit_custom_xer_encoder(arg_t *arg, asn1p_expr_t *expr) {
     }
     
     const char *type_name = MKID(expr);
+    const char *base_type = c_name(arg).type.base_name;
     enum asn1p_encoding_control_type_e enc_type = expr->encoding_control.encoding_type;
+    asn1p_expr_type_e etype = expr_get_type(arg, expr);
+
+    if(enc_type == EC_XER_TEXT && etype == ASN_BASIC_BIT_STRING) {
+        asn1p_expr_t *v;
+        OUT("\n");
+        OUT("/* Custom XER encoder per ENCODING-CONTROL directive */\n");
+        OUT("static asn_enc_rval_t\n");
+        OUT("%s_encode_xer(const asn_TYPE_descriptor_t *td, const void *sptr,\n", type_name);
+        INDENT(+1);
+        OUT("int ilevel, enum xer_encoder_flags_e flags,\n");
+        OUT("asn_app_consume_bytes_f *cb, void *app_key) {\n");
+        INDENT(-1);
+        INDENT(+1);
+        OUT("const BIT_STRING_t *st = (const BIT_STRING_t *)sptr;\n");
+        OUT("asn_enc_rval_t er = {0, 0, 0};\n");
+        OUT("int first = 1;\n");
+        OUT("(void)td;\n");
+        OUT("(void)ilevel;\n");
+        OUT("(void)flags;\n");
+        OUT("if(!st || !st->buf) ASN__ENCODE_FAILED;\n");
+        TQ_FOR(v, &(expr->members), next) {
+            const char *wire_name;
+            if(v->expr_type != A1TC_UNIVERVAL) continue;
+            wire_name = v->encoding_control.replacement
+                ? v->encoding_control.replacement : v->Identifier;
+            OUT("if(st->size > %ld && (st->buf[%ld] & 0x%02x)) {\n",
+                (long)(v->value->value.v_integer / 8),
+                (long)(v->value->value.v_integer / 8),
+                0x80 >> (v->value->value.v_integer % 8));
+            INDENT(+1);
+            OUT("if(!first) ASN__CALLBACK(\" \", 1);\n");
+            OUT("ASN__CALLBACK(\"%s\", %ld);\n",
+                wire_name, (long)strlen(wire_name));
+            OUT("er.encoded += %ld + (first ? 0 : 1);\n",
+                (long)strlen(wire_name));
+            OUT("first = 0;\n");
+            INDENT(-1);
+            OUT("}\n");
+        }
+        OUT("ASN__ENCODED_OK(er);\n");
+        OUT("cb_failed:\n");
+        INDENT(+1);
+        OUT("ASN__ENCODE_FAILED;\n");
+        INDENT(-1);
+        INDENT(-1);
+        OUT("}\n");
+        OUT("\n");
+        return 1;
+    }
     
     OUT("\n");
     OUT("/* Custom XER encoder per ENCODING-CONTROL directive */\n");
@@ -2459,62 +2668,62 @@ emit_custom_xer_encoder(arg_t *arg, asn1p_expr_t *expr) {
     INDENT(-1);
     
     INDENT(+1);
-    OUT("const OCTET_STRING_t *st = (const OCTET_STRING_t *)sptr;\n");
-    OUT("asn_enc_rval_t er = {0,0,0};\n");
-    OUT("\n");
-    
-    OUT("(void)td;  /* Unused parameter */\n");
-    OUT("(void)ilevel;  /* Unused in this implementation */\n");
-    OUT("(void)flags;  /* Unused in this implementation */\n");
-    OUT("\n");
-    
-    OUT("if(!st || (!st->buf && st->size)) {\n");
-    INDENT(+1);
-    OUT("ASN__ENCODE_FAILED;\n");
-    INDENT(-1);
-    OUT("}\n");
-    OUT("\n");
-    
+
     switch(enc_type) {
     case EC_XER_HEXADECIMAL:
-        OUT("/* Hexadecimal encoding per ENCODING-CONTROL */\n");
-        OUT("{\n");
+        /*
+         * Hex is the default, but the schema instruction must not be
+         * overridden by a runtime XER_F_BASE64 flag.  Mask the flag so
+         * OCTET_STRING_encode_xer always produces hex for this type.
+         */
+        OUT("/* Hexadecimal encoding per ENCODING-CONTROL; XER_F_BASE64 masked */\n");
+        OUT("return OCTET_STRING_encode_xer(td, sptr, ilevel,\n");
         INDENT(+1);
-        OUT("const char * const h2c = \"0123456789ABCDEF\";\n");
-        OUT("char *hexbuf;\n");
-        OUT("size_t i;\n");
-        OUT("\n");
-        OUT("hexbuf = (char *)MALLOC(st->size * 2 + 1);\n");
-        OUT("if(!hexbuf) ASN__ENCODE_FAILED;\n");
-        OUT("\n");
-        OUT("for(i = 0; i < st->size; i++) {\n");
-        INDENT(+1);
-        OUT("hexbuf[i*2] = h2c[(st->buf[i] >> 4) & 0x0F];\n");
-        OUT("hexbuf[i*2 + 1] = h2c[st->buf[i] & 0x0F];\n");
+        OUT("(enum xer_encoder_flags_e)(flags & ~XER_F_BASE64),\n");
+        OUT("cb, app_key);\n");
         INDENT(-1);
-        OUT("}\n");
-        OUT("hexbuf[st->size * 2] = 0;\n");
-        OUT("\n");
-        OUT("er.encoded = cb(hexbuf, st->size * 2, app_key);\n");
-        OUT("FREEMEM(hexbuf);\n");
-        OUT("if(er.encoded < 0) ASN__ENCODE_FAILED;\n");
-        INDENT(-1);
-        OUT("}\n");
         break;
-        
+
+    case EC_XER_BASE64:
+        /*
+         * Base64 encoding pinned by ENCODING-CONTROL.  Unlike XER_F_BASE64
+         * (the runtime flag), this instruction is not overridden by
+         * XER_F_CANONICAL — the schema defines the encoding of this type.
+         */
+        OUT("/* Base64 encoding per ENCODING-CONTROL XER ... ::= base64 */\n");
+        OUT("return OCTET_STRING_encode_xer_base64(td, sptr, ilevel, flags, cb, app_key);\n");
+        break;
+
     case EC_XER_UTF8:
         OUT("/* UTF-8 text encoding per ENCODING-CONTROL */\n");
         OUT("return OCTET_STRING_encode_xer_utf8(td, sptr, ilevel, flags, cb, app_key);\n");
         break;
-        
+
+    case EC_XER_TEXT:
+        OUT("/* Text encoding per ENCODING-CONTROL */\n");
+        if(etype == ASN_BASIC_BOOLEAN) {
+            OUT("return BOOLEAN_encode_xer_text(td, sptr, ilevel, flags, cb, app_key);\n");
+        } else if(etype == ASN_BASIC_ENUMERATED && asn1c_type_fits_long(arg, expr)) {
+            OUT("return NativeEnumerated_encode_xer_text(td, sptr, ilevel, flags, cb, app_key);\n");
+        } else if(strcmp(base_type, "NativeInteger") == 0) {
+            OUT("return NativeInteger_encode_xer_text(td, sptr, ilevel, flags, cb, app_key);\n");
+        } else {
+            OUT("return INTEGER_encode_xer_text(td, sptr, ilevel, flags, cb, app_key);\n");
+        }
+        break;
+
+    case EC_XER_DECIMAL:
+        OUT("/* Decimal REAL encoding per ENCODING-CONTROL */\n");
+        OUT("return %s_encode_xer_decimal(td, sptr, ilevel, flags, cb, app_key);\n",
+            base_type);
+        break;
+
     default:
-        OUT("/* Fallback to default encoding */\n");
+        OUT("/* Fallback to default hex encoding */\n");
         OUT("return OCTET_STRING_encode_xer(td, sptr, ilevel, flags, cb, app_key);\n");
         break;
     }
-    
-    OUT("\n");
-    OUT("return er;\n");
+
     INDENT(-1);
     OUT("}\n");
     OUT("\n");
@@ -2532,7 +2741,90 @@ emit_custom_xer_decoder(arg_t *arg, asn1p_expr_t *expr) {
     }
     
     const char *type_name = MKID(expr);
+    const char *base_type = c_name(arg).type.base_name;
     enum asn1p_encoding_control_type_e enc_type = expr->encoding_control.encoding_type;
+    asn1p_expr_type_e etype = expr_get_type(arg, expr);
+
+    if(enc_type == EC_XER_TEXT && etype == ASN_BASIC_BIT_STRING) {
+        asn1p_expr_t *v;
+        GEN_INCLUDE_STD("asn_codecs_prim");
+        OUT("\n");
+        OUT("/* Custom XER decoder per ENCODING-CONTROL directive */\n");
+        OUT("static enum xer_pbd_rval\n");
+        OUT("%s_xer_text_body_decode(const asn_TYPE_descriptor_t *td,\n", type_name);
+        INDENT(+1);
+        OUT("void *sptr, const void *chunk_buf, size_t chunk_size) {\n");
+        INDENT(-1);
+        INDENT(+1);
+        OUT("BIT_STRING_t *st = (BIT_STRING_t *)sptr;\n");
+        OUT("const char *p = (const char *)chunk_buf;\n");
+        OUT("const char *end = p + chunk_size;\n");
+        OUT("size_t max_bit = 0;\n");
+        OUT("int any = 0;\n");
+        OUT("(void)td;\n");
+        TQ_FOR(v, &(expr->members), next) {
+            if(v->expr_type != A1TC_UNIVERVAL) continue;
+            OUT("if(max_bit < %ld) max_bit = %ld;\n",
+                (long)v->value->value.v_integer,
+                (long)v->value->value.v_integer);
+        }
+        OUT("if(OCTET_STRING_fromBuf((OCTET_STRING_t *)st, 0,\n");
+        INDENT(+1);
+        OUT("(int)((max_bit / 8) + 1))) return XPBD_SYSTEM_FAILURE;\n");
+        INDENT(-1);
+        OUT("memset(st->buf, 0, st->size);\n");
+        OUT("st->bits_unused = (int)((8 - ((max_bit + 1) %% 8)) %% 8);\n");
+        OUT("while(p < end) {\n");
+        INDENT(+1);
+        OUT("const char *start;\n");
+        OUT("int matched = 0;\n");
+        OUT("while(p < end && (*p == 9 || *p == 10 || *p == 13 || *p == 32)) p++;\n");
+        OUT("if(p == end) break;\n");
+        OUT("start = p;\n");
+        OUT("while(p < end && *p != 9 && *p != 10 && *p != 13 && *p != 32) p++;\n");
+        TQ_FOR(v, &(expr->members), next) {
+            const char *wire_name;
+            long bit;
+            if(v->expr_type != A1TC_UNIVERVAL) continue;
+            wire_name = v->encoding_control.replacement
+                ? v->encoding_control.replacement : v->Identifier;
+            bit = (long)v->value->value.v_integer;
+            OUT("if(!matched && (size_t)(p - start) == %ld\n",
+                (long)strlen(wire_name));
+            INDENT(+1);
+            OUT("&& memcmp(start, \"%s\", %ld) == 0) {\n",
+                wire_name, (long)strlen(wire_name));
+            OUT("st->buf[%ld] |= 0x%02x;\n",
+                bit / 8, 0x80 >> (bit % 8));
+            OUT("matched = 1;\n");
+            INDENT(-1);
+            OUT("}\n");
+        }
+        OUT("if(!matched) return XPBD_BROKEN_ENCODING;\n");
+        OUT("any = 1;\n");
+        INDENT(-1);
+        OUT("}\n");
+        OUT("return any ? XPBD_BODY_CONSUMED : XPBD_NOT_BODY_IGNORE;\n");
+        INDENT(-1);
+        OUT("}\n");
+        OUT("\n");
+        OUT("static asn_dec_rval_t\n");
+        OUT("%s_decode_xer(const asn_codec_ctx_t *opt_codec_ctx,\n", type_name);
+        INDENT(+1);
+        OUT("const asn_TYPE_descriptor_t *td, void **sptr,\n");
+        OUT("const char *opt_mname, const void *buf_ptr, size_t size) {\n");
+        INDENT(-1);
+        INDENT(+1);
+        OUT("return xer_decode_primitive(opt_codec_ctx, td,\n");
+        INDENT(+1);
+        OUT("sptr, sizeof(BIT_STRING_t), opt_mname,\n");
+        OUT("buf_ptr, size, %s_xer_text_body_decode);\n", type_name);
+        INDENT(-1);
+        INDENT(-1);
+        OUT("}\n");
+        OUT("\n");
+        return 1;
+    }
     
     OUT("\n");
     OUT("/* Custom XER decoder per ENCODING-CONTROL directive */\n");
@@ -2547,13 +2839,30 @@ emit_custom_xer_decoder(arg_t *arg, asn1p_expr_t *expr) {
     
     switch(enc_type) {
     case EC_XER_HEXADECIMAL:
+        /*
+         * Pin to hex decoder so that a value like "ABCD" (ambiguous — valid
+         * hex AND valid Base64) is always decoded as hex for this type.
+         */
         OUT("/* Hexadecimal decoding per ENCODING-CONTROL */\n");
         OUT("return OCTET_STRING_decode_xer_hex(opt_codec_ctx, td, sptr,\n");
         INDENT(+1);
         OUT("opt_mname, buf_ptr, size);\n");
         INDENT(-1);
         break;
-        
+
+    case EC_XER_BASE64:
+        /*
+         * Pin the decoder to Base64: a value like "ABCD" is also valid hex,
+         * so the auto-detector would misclassify it.  Schema knowledge beats
+         * content heuristics here.
+         */
+        OUT("/* Base64 decoder pinned per ENCODING-CONTROL */\n");
+        OUT("return OCTET_STRING_decode_xer_base64(opt_codec_ctx, td, sptr,\n");
+        INDENT(+1);
+        OUT("opt_mname, buf_ptr, size);\n");
+        INDENT(-1);
+        break;
+
     case EC_XER_UTF8:
         OUT("/* UTF-8 text decoding per ENCODING-CONTROL */\n");
         OUT("return OCTET_STRING_decode_xer_utf8(opt_codec_ctx, td, sptr,\n");
@@ -2561,10 +2870,32 @@ emit_custom_xer_decoder(arg_t *arg, asn1p_expr_t *expr) {
         OUT("opt_mname, buf_ptr, size);\n");
         INDENT(-1);
         break;
-        
+
+    case EC_XER_TEXT:
+        OUT("/* Text decoding per ENCODING-CONTROL */\n");
+        if(etype == ASN_BASIC_BOOLEAN) {
+            OUT("return BOOLEAN_decode_xer(opt_codec_ctx, td, sptr,\n");
+        } else if(etype == ASN_BASIC_ENUMERATED && asn1c_type_fits_long(arg, expr)) {
+            OUT("return NativeEnumerated_decode_xer_text(opt_codec_ctx, td, sptr,\n");
+        } else if(strcmp(base_type, "NativeInteger") == 0) {
+            OUT("return NativeInteger_decode_xer_text(opt_codec_ctx, td, sptr,\n");
+        } else {
+            OUT("return INTEGER_decode_xer_text(opt_codec_ctx, td, sptr,\n");
+        }
+        INDENT(+1);
+        OUT("opt_mname, buf_ptr, size);\n");
+        INDENT(-1);
+        break;
+
+    case EC_XER_DECIMAL:
+        OUT("/* Decimal REAL decoding per ENCODING-CONTROL */\n");
+        OUT("return %s_decode_xer_decimal(opt_codec_ctx, td, sptr, opt_mname, buf_ptr, size);\n",
+            base_type);
+        break;
+
     default:
-        OUT("/* Fallback to default decoder */\n");
-        OUT("return OCTET_STRING_decode_xer(opt_codec_ctx, td, sptr,\n");
+        OUT("/* Default: auto-detecting hex/Base64 decoder */\n");
+        OUT("return OCTET_STRING_decode_xer_auto(opt_codec_ctx, td, sptr,\n");
         INDENT(+1);
         OUT("opt_mname, buf_ptr, size);\n");
         INDENT(-1);
@@ -2578,12 +2909,65 @@ emit_custom_xer_decoder(arg_t *arg, asn1p_expr_t *expr) {
     return 1;
 }
 
+static int
+emit_custom_jer_encoder(arg_t *arg, asn1p_expr_t *expr) {
+    const char *type_name;
+
+    if(!type_needs_custom_jer_encoder(arg, expr))
+        return 0;
+
+    type_name = MKID(expr);
+    OUT("\n");
+    OUT("/* Custom JER encoder per ENCODING-CONTROL directive */\n");
+    OUT("static asn_enc_rval_t\n");
+    OUT("%s_encode_jer(const asn_TYPE_descriptor_t *td,\n", type_name);
+    INDENT(+1);
+    OUT("const asn_jer_constraints_t *constraints, const void *sptr,\n");
+    OUT("int ilevel, enum jer_encoder_flags_e flags,\n");
+    OUT("asn_app_consume_bytes_f *cb, void *app_key) {\n");
+    INDENT(-1);
+    INDENT(+1);
+    OUT("(void)constraints;\n");
+    OUT("return OCTET_STRING_encode_jer_base64(td, 0, sptr, ilevel, flags, cb, app_key);\n");
+    INDENT(-1);
+    OUT("}\n");
+    OUT("\n");
+    return 1;
+}
+
+static int
+emit_custom_jer_decoder(arg_t *arg, asn1p_expr_t *expr) {
+    const char *type_name;
+
+    if(!type_needs_custom_jer_encoder(arg, expr))
+        return 0;
+
+    type_name = MKID(expr);
+    OUT("/* Custom JER decoder per ENCODING-CONTROL directive */\n");
+    OUT("static asn_dec_rval_t\n");
+    OUT("%s_decode_jer(const asn_codec_ctx_t *opt_codec_ctx,\n", type_name);
+    INDENT(+1);
+    OUT("const asn_TYPE_descriptor_t *td,\n");
+    OUT("const asn_jer_constraints_t *constraints, void **sptr,\n");
+    OUT("const void *buf_ptr, size_t size) {\n");
+    INDENT(-1);
+    INDENT(+1);
+    OUT("(void)constraints;\n");
+    OUT("return OCTET_STRING_decode_jer_base64(opt_codec_ctx, td, 0, sptr, buf_ptr, size);\n");
+    INDENT(-1);
+    OUT("}\n");
+    OUT("\n");
+    return 1;
+}
+
 /*
  * Generate custom operation structure for types with ENCODING-CONTROL directives
  */
 static int
 emit_custom_operation_structure(arg_t *arg, asn1p_expr_t *expr) {
-    if(!type_needs_custom_xer_encoder(arg, expr)) {
+    int custom_xer = type_needs_custom_xer_encoder(arg, expr);
+    int custom_jer = type_needs_custom_jer_encoder(arg, expr);
+    if(!custom_xer && !custom_jer) {
         return 0;
     }
     
@@ -2605,6 +2989,7 @@ emit_custom_operation_structure(arg_t *arg, asn1p_expr_t *expr) {
     INDENT(+1);
     
     /* Use OCTET_STRING base operations except for XER */
+    OUT(".kind = ASN_KIND_PRIMITIVE,\n");
     OUT("%s_free,\n", base_type);
     
     OUT_NOINDENT("#if !defined(ASN_DISABLE_PRINT_SUPPORT)\n");
@@ -2635,9 +3020,17 @@ emit_custom_operation_structure(arg_t *arg, asn1p_expr_t *expr) {
     
     OUT_NOINDENT("#if !defined(ASN_DISABLE_XER_SUPPORT)\n");
     if(arg->flags & A1C_GEN_XER) {
-        /* Use custom XER functions */
-        OUT("%s_decode_xer,  /* Custom per ENCODING-CONTROL */\n", type_name);
-        OUT("%s_encode_xer,  /* Custom per ENCODING-CONTROL */\n", type_name);
+        if(custom_xer) {
+            OUT("%s_decode_xer,  /* Custom per ENCODING-CONTROL */\n", type_name);
+            OUT("%s_encode_xer,  /* Custom per ENCODING-CONTROL */\n", type_name);
+        } else {
+            if(strcmp(base_type, "OCTET_STRING") == 0) {
+                OUT("%s_decode_xer_hex,\n", base_type);
+            } else {
+                OUT("%s_decode_xer,\n", base_type);
+            }
+            OUT("%s_encode_xer,\n", base_type);
+        }
     } else {
         OUT("0,\n");
         OUT("0,\n");
@@ -2649,11 +3042,23 @@ emit_custom_operation_structure(arg_t *arg, asn1p_expr_t *expr) {
     
     OUT_NOINDENT("#if !defined(ASN_DISABLE_JER_SUPPORT)\n");
     if(arg->flags & A1C_GEN_JER) {
-        OUT("%s_encode_jer,\n", base_type);
+        if(custom_jer) {
+            OUT("%s_decode_jer,  /* Custom per ENCODING-CONTROL */\n", type_name);
+            OUT("%s_encode_jer,  /* Custom per ENCODING-CONTROL */\n", type_name);
+        } else {
+            if(strcmp(base_type, "OCTET_STRING") == 0) {
+                OUT("%s_decode_jer_hex,\n", base_type);
+            } else {
+                OUT("%s_decode_jer,\n", base_type);
+            }
+            OUT("%s_encode_jer,\n", base_type);
+        }
     } else {
+        OUT("0,\n");
         OUT("0,\n");
     }
     OUT_NOINDENT("#else\n");
+    OUT("0,\n");
     OUT("0,\n");
     OUT_NOINDENT("#endif  /* !defined(ASN_DISABLE_JER_SUPPORT) */\n");
     
@@ -3231,7 +3636,7 @@ emit_member_PER_constraints(arg_t *arg, asn1p_expr_t *expr, const char *pfx) {
 	} else if(etype & ASN_STRING_KM_MASK) {
 		range = asn1constraint_compute_PER_range(expr->Identifier, etype,
 				expr->combined_constraints, ACT_CT_FROM,
-				0, 0, 0);
+				0, 0, CPR_ignore_extension_additions);
 		DEBUG("Emitting FROM constraint for %s", expr->Identifier);
 
 		if((range->left.type == ARE_MIN && range->right.type == ARE_MAX)
@@ -3261,7 +3666,7 @@ emit_member_PER_constraints(arg_t *arg, asn1p_expr_t *expr, const char *pfx) {
 	} else {
 		range = asn1constraint_compute_PER_range(expr->Identifier, etype,
 				expr->combined_constraints, ACT_EL_RANGE,
-				0, 0, 0);
+				0, 0, CPR_ignore_extension_additions);
 		if(emit_single_member_PER_constraint(arg, range, 0, 0))
 			return -1;
 		asn1constraint_range_free(range);
@@ -3269,7 +3674,8 @@ emit_member_PER_constraints(arg_t *arg, asn1p_expr_t *expr, const char *pfx) {
 	OUT(",\n");
 
 	range = asn1constraint_compute_PER_range(expr->Identifier, etype,
-			expr->combined_constraints, ACT_CT_SIZE, 0, 0, 0);
+			expr->combined_constraints, ACT_CT_SIZE, 0, 0,
+			CPR_ignore_extension_additions);
 
 	/*
 	 * UTF8String (SIZE(lb..ub, ...)) has no PER-visible alphabet
@@ -3373,7 +3779,8 @@ emit_member_JER_constraints(arg_t *arg, asn1p_expr_t *expr, const char *pfx) {
     etype = expr_get_type(arg, expr);
 
     if((arg->flags & A1C_GEN_JER)
-       && (etype == ASN_BASIC_BIT_STRING)) {
+       && (etype == ASN_BASIC_BIT_STRING
+           || expr->encoding_control.encoding_type == EC_JER_NAME)) {
         /* Fall through */
     } else {
         return 0;
@@ -3432,6 +3839,14 @@ emit_member_JER_constraints(arg_t *arg, asn1p_expr_t *expr, const char *pfx) {
         return -1;
     }
     asn1constraint_range_free(range);
+    OUT(",\n");
+    if(expr->encoding_control.encoding_type == EC_JER_NAME
+       && expr->encoding_control.replacement) {
+        OUT("\"%s\",\n", expr->encoding_control.replacement);
+    } else {
+        OUT("0,\n");
+    }
+    OUT("0");
 
     INDENT(-1);
 
@@ -3914,6 +4329,13 @@ emit_member_type_selector(arg_t *arg, asn1p_expr_t *expr, asn1c_ioc_table_and_ob
     OUT("        continue;\n");
     OUT("\n");
     OUT("    presence_index++;\n");
+    OUT("    if(constraining_cell->cell_kind == aioc__undefined\n");
+    OUT("       || !constraining_cell->type_descriptor\n");
+    OUT("       || !constraining_cell->type_descriptor->op\n");
+    OUT("       || !constraining_cell->type_descriptor->op->compare_struct\n");
+    OUT("       || !constraining_cell->value_sptr\n");
+    OUT("       || !type_cell->type_descriptor)\n");
+    OUT("        continue;\n");
     OUT("    if(constraining_cell->type_descriptor->op->compare_struct(constraining_cell->type_descriptor, constraining_value, constraining_cell->value_sptr) == 0) {\n");
     OUT("        result.type_descriptor = type_cell->type_descriptor;\n");
     OUT("        result.presence_index = presence_index;\n");
@@ -4024,12 +4446,16 @@ emit_member_table(arg_t *arg, asn1p_expr_t *expr, asn1c_ioc_table_and_objset_t *
 
 	complex_contents =
 		is_open_type(arg, expr, opt_ioc)
+		|| type_needs_custom_xer_encoder(arg, expr)
+		|| type_needs_custom_jer_encoder(arg, expr)
 		|| (expr->expr_type & ASN_CONSTR_MASK)
 		|| expr->expr_type == ASN_BASIC_ENUMERATED
 		|| (0 /* -- prohibited by X.693:8.3.4 */
 			&& expr->expr_type == ASN_BASIC_INTEGER
 			&& expr_elements_count(arg, expr))
-		|| fits_unsigned_integer;
+		|| fits_unsigned_integer
+		|| (expr->expr_type == ASN_BASIC_BIT_STRING
+			&& expr_elements_count(arg, expr));
 
 	if(C99_MODE) OUT(".type = ");
 	/*
@@ -4054,9 +4480,13 @@ emit_member_table(arg_t *arg, asn1p_expr_t *expr, asn1c_ioc_table_and_objset_t *
 		 */
 		if(is_open_type(arg, expr, opt_ioc)
 		   || (arg->flags & A1C_ALL_DEFS_GLOBAL)
+		   || type_needs_custom_xer_encoder(arg, expr)
+		   || type_needs_custom_jer_encoder(arg, expr)
 		   || (expr->parent_expr
 		       && ((expr->expr_type & ASN_CONSTR_MASK)
-		           || expr->expr_type == ASN_BASIC_ENUMERATED))
+		           || expr->expr_type == ASN_BASIC_ENUMERATED
+		           || (expr->expr_type == ASN_BASIC_BIT_STRING
+		               && expr_elements_count(arg, expr))))
 		   || (expr->_anonymous_type && fits_unsigned_integer)) {
 			OUT("_%d", expr->_type_unique_index);
 		}
@@ -4110,7 +4540,8 @@ emit_member_table(arg_t *arg, asn1p_expr_t *expr, asn1c_ioc_table_and_objset_t *
     OUT_NOINDENT("#if !defined(ASN_DISABLE_JER_SUPPORT)\n");
 	if(C99_MODE) OUT(".jer_constraints = ");
 	if(arg->flags & A1C_GEN_JER) {
-		if(expr->constraints && expr->expr_type == ASN_BASIC_BIT_STRING) {
+		if((expr->constraints && expr->expr_type == ASN_BASIC_BIT_STRING)
+		   || expr->encoding_control.encoding_type == EC_JER_NAME) {
 			OUT("&asn_JER_memb_%s_constr_%d",
 				MKID(expr),
 				expr->_type_unique_index);
@@ -4153,8 +4584,11 @@ emit_member_table(arg_t *arg, asn1p_expr_t *expr, asn1c_ioc_table_and_objset_t *
 	OUT("},\n");
 	INDENT(-1);
 
-	if(!expr->constraints || (arg->flags & A1C_NO_CONSTRAINTS))
+	if(!expr->constraints || (arg->flags & A1C_NO_CONSTRAINTS)) {
+		if(emit_member_JER_constraints(arg, expr, "memb"))
+			return -1;
 		return 0;
+	}
 
 	save_target = arg->target->target;
 	REDIR(OT_CODE);
@@ -4219,17 +4653,77 @@ identifier_collides_with_ancestor(asn1p_expr_t *expr) {
 }
 
 /*
+ * Count, in the subtree rooted at `node`, the named (non-anonymous) types
+ * carrying the given identifier.
+ */
+static void
+identifier_count_in_subtree(asn1p_expr_t *node, const char *ident, int *count) {
+	asn1p_expr_t *child;
+
+	if(!node) return;
+
+	if(node->Identifier && !node->_anonymous_type
+	    && strcmp(node->Identifier, ident) == 0) {
+		(*count)++;
+	}
+
+	TQ_FOR(child, &(node->members), next) {
+		identifier_count_in_subtree(child, ident, count);
+	}
+}
+
+/*
+ * Check if an expression's identifier is ambiguous within its compilation
+ * unit, i.e. the subtree rooted at its top-level type, which all ends up
+ * in a single generated .c file.  With -fcompound-names two SIBLING (or
+ * cousin) inner types may carry the same name (e.g. one-name.another-name
+ * and two-name.another-name): the suffixed descriptors are unique, but
+ * emitting an unsuffixed convenience alias for each would define the same
+ * alias symbol twice in one translation unit.  GCC happens to tolerate the
+ * duplicate weak alias; clang rejects it with "error: redefinition", and
+ * the non-ELF fallback would silently pick whichever constructor ran last.
+ * In such ambiguous cases the unsuffixed alias must not be emitted at all.
+ */
+static int
+identifier_ambiguous_in_unit(asn1p_expr_t *expr) {
+	asn1p_expr_t *root;
+	int count = 0;
+
+	if(!expr || !expr->Identifier) {
+		return 0;
+	}
+
+	/* Find the top-level type this expression belongs to. */
+	root = expr;
+	while(root->parent_expr) {
+		root = root->parent_expr;
+	}
+
+	identifier_count_in_subtree(root, expr->Identifier, &count);
+
+	return count > 1;  /* Ambiguous if the name occurs more than once */
+}
+
+/*
  * Generate "asn_DEF_XXX" type definition.
  */
 static int
 emit_type_DEF(arg_t *arg, asn1p_expr_t *expr, enum tvm_compat tv_mode, int tags_count, int all_tags_count, int elements_count, enum etd_spec spec) {
 	asn1p_expr_t *terminal;
+	asn1p_expr_type_e terminal_etype;
 	int using_type_name = 0;
 	char *expr_id = strdup(MKID(expr));
 	char *p = expr_id;
 	char *p2 = (char *)0;
 
 	terminal = asn1f_find_terminal_type_ex(arg->asn, arg->ns, expr);
+	terminal_etype = expr_get_type(arg, expr);
+
+	/*
+	 * Type aliases inherit the encoding constraints of their terminal type.
+	 * @zhouvlia reported issue #552 after an ENUMERATED alias descriptor left
+	 * this slot NULL, making NativeEnumerated unable to determine range_bits.
+	 */
 
 	if(emit_member_OER_constraints(arg, expr, "type"))
 		return -1;
@@ -4274,7 +4768,8 @@ emit_type_DEF(arg_t *arg, asn1p_expr_t *expr, enum tvm_compat tv_mode, int tags_
 			p2 = strdup(p);
 
         /* Use custom operation structure if type has encoding controls */
-        if(type_needs_custom_xer_encoder(arg, expr)) {
+        if(type_needs_custom_xer_encoder(arg, expr)
+        || type_needs_custom_jer_encoder(arg, expr)) {
             OUT("&asn_OP_%s", expr_id);
             if(HIDE_INNER_DEFS) OUT("_%d", expr->_type_unique_index);
             OUT(",  /* Custom operations per ENCODING-CONTROL */\n");
@@ -4322,8 +4817,8 @@ emit_type_DEF(arg_t *arg, asn1p_expr_t *expr, enum tvm_compat tv_mode, int tags_
         OUT_NOINDENT("#if !defined(ASN_DISABLE_OER_SUPPORT)\n");
 		if(arg->flags & A1C_GEN_OER) {
 			if(expr->combined_constraints
-			|| expr->expr_type == ASN_BASIC_ENUMERATED
-			|| expr->expr_type == ASN_CONSTR_CHOICE) {
+			|| terminal_etype == ASN_BASIC_ENUMERATED
+			|| terminal_etype == ASN_CONSTR_CHOICE) {
 				OUT("&asn_OER_type_%s_constr_%d",
 					expr_id, expr->_type_unique_index);
 			} else {
@@ -4337,11 +4832,9 @@ emit_type_DEF(arg_t *arg, asn1p_expr_t *expr, enum tvm_compat tv_mode, int tags_
         OUT_NOINDENT("#if !defined(ASN_DISABLE_UPER_SUPPORT) || !defined(ASN_DISABLE_APER_SUPPORT)\n");
 		if(arg->flags & (A1C_GEN_UPER | A1C_GEN_APER)) {
             if(expr->combined_constraints
-               || expr->expr_type == ASN_BASIC_ENUMERATED
-               || expr->expr_type == ASN_CONSTR_CHOICE
-               || (expr->expr_type & ASN_STRING_KM_MASK)
-               || (expr->expr_type == A1TC_REFERENCE && terminal && terminal->expr_type == ASN_BASIC_ENUMERATED)
-               || (expr->expr_type == A1TC_REFERENCE && terminal && terminal->expr_type == ASN_CONSTR_CHOICE)) {
+               || terminal_etype == ASN_BASIC_ENUMERATED
+               || terminal_etype == ASN_CONSTR_CHOICE
+               || (terminal_etype & ASN_STRING_KM_MASK)) {
                 OUT("&asn_PER_type_%s_constr_%d",
 					expr_id, expr->_type_unique_index);
 			} else {
@@ -4447,7 +4940,9 @@ emit_type_DEF(arg_t *arg, asn1p_expr_t *expr, enum tvm_compat tv_mode, int tags_
 	            ((terminal->expr_type & ASN_CONSTR_MASK) ||
 	             (terminal->expr_type == ASN_BASIC_ENUMERATED) ||
 	             ((terminal->expr_type == ASN_BASIC_INTEGER) &&
-	              asn1c_int_has_native_specifics(arg, terminal)))) {
+	              asn1c_int_has_native_specifics(arg, terminal)) ||
+	             ((terminal->expr_type == ASN_BASIC_BIT_STRING) &&
+	              expr_elements_count(arg, terminal)))) {
 		        OUT("&asn_SPC_%s_specs_%d\t/* Additional specs */\n",
 		            c_expr_name(arg, terminal).part_name,
 		            terminal->_type_unique_index);
@@ -4485,10 +4980,15 @@ emit_type_DEF(arg_t *arg, asn1p_expr_t *expr, enum tvm_compat tv_mode, int tags_
 	 * Only for named (non-anonymous) types.
 	 * 
 	 * Skip generating the weak alias if the identifier collides with an ancestor's
-	 * identifier, as this would create multiple weak aliases to the same name,
-	 * causing runtime issues where the wrong type descriptor is selected.
+	 * identifier, or occurs more than once anywhere in this compilation unit
+	 * (e.g. same-named siblings/cousins under -fcompound-names), as this would
+	 * create multiple definitions of the same alias symbol: clang rejects that
+	 * outright, and the fallback path would select the wrong type descriptor
+	 * at runtime.
 	 */
-	if(!expr->_anonymous_type && HIDE_INNER_DEFS && !identifier_collides_with_ancestor(expr)) {
+	if(!expr->_anonymous_type && HIDE_INNER_DEFS
+	    && !identifier_collides_with_ancestor(expr)
+	    && !identifier_ambiguous_in_unit(expr)) {
 		int saved_target2 = arg->target->target;
 		REDIR(OT_CODE);
 

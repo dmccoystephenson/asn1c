@@ -131,31 +131,31 @@ int main() {
     
     /* Additional test cases */
     
-    /* Value 0: Expected 00 00 (2-bit constrained length "00", align, then value 0x00) */
+    /* Value 0: Expected 00 00 */
     uint8_t expected_0[] = {0x00, 0x00};
     check_f1ap_id_encoding(__LINE__, 0, expected_0, sizeof(expected_0));
     
-    /* Value 255 (0xFF): Expected 00 FF (2-bit constrained length "00", align, then value 0xFF) */
+    /* Value 255 (0xFF): Expected 00 FF */
     uint8_t expected_255[] = {0x00, 0xFF};
     check_f1ap_id_encoding(__LINE__, 255, expected_255, sizeof(expected_255));
     
-    /* Value 256 (0x0100): Expected 40 01 00 (2-bit constrained length "01", align, then value bytes) */
+    /* Value 256 (0x0100): Expected 40 01 00 */
     uint8_t expected_256[] = {0x40, 0x01, 0x00};
     check_f1ap_id_encoding(__LINE__, 256, expected_256, sizeof(expected_256));
     
-    /* Value 65535 (0xFFFF): Expected 40 FF FF (2-bit constrained length "01", align, then value bytes) */
+    /* Value 65535 (0xFFFF): Expected 40 FF FF */
     uint8_t expected_65535[] = {0x40, 0xFF, 0xFF};
     check_f1ap_id_encoding(__LINE__, 65535, expected_65535, sizeof(expected_65535));
     
-    /* Value 65536 (0x010000): Expected 80 01 00 00 (2-bit constrained length "10", align, then value bytes) */
+    /* Value 65536 (0x010000): Expected 80 01 00 00 */
     uint8_t expected_65536[] = {0x80, 0x01, 0x00, 0x00};
     check_f1ap_id_encoding(__LINE__, 65536, expected_65536, sizeof(expected_65536));
     
-    /* Value 16777215 (0xFFFFFF): Expected 80 FF FF FF (2-bit constrained length "10", align, then value bytes) */
+    /* Value 16777215 (0xFFFFFF): Expected 80 FF FF FF */
     uint8_t expected_16777215[] = {0x80, 0xFF, 0xFF, 0xFF};
     check_f1ap_id_encoding(__LINE__, 16777215, expected_16777215, sizeof(expected_16777215));
     
-    /* Max value 4294967295 (0xFFFFFFFF): Expected C0 FF FF FF FF (2-bit constrained length "11", align, then value bytes) */
+    /* Max value 4294967295 (0xFFFFFFFF): Expected C0 FF FF FF FF */
     uint8_t expected_max[] = {0xC0, 0xFF, 0xFF, 0xFF, 0xFF};
     check_f1ap_id_encoding(__LINE__, 4294967295UL, expected_max, sizeof(expected_max));
     
