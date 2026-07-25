@@ -1,6 +1,8 @@
 
 dist_man1_MANS = asn1c.1 unber.1 enber.1
 
+EXTRA_DIST = $(srcdir)/*.man.md
+
 if HAVE_PANDOC
 
 PANDOC_OPTIONS= --from markdown --to man        \
@@ -13,4 +15,3 @@ PANDOC_OPTIONS= --from markdown --to man        \
 	${PANDOC} ${PANDOC_OPTIONS} -o $@ $<
 
 endif
-
