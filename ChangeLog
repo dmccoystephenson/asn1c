@@ -222,6 +222,12 @@ Changes since v1.5.0:
 	  the installed man pages and are read by the check above, but were
 	  missing from the distribution tarball, so `make distcheck` could not
 	  find them.
+	* Filled in .github/dependabot.yml's unset `package-ecosystem: ""`
+	  template placeholder with `github-actions`, the only manifest this
+	  fork has for Dependabot to track. The empty value meant Dependabot
+	  registered no update job at all, so the pinned Action versions in
+	  .github/workflows/c-cpp.yml (actions/checkout, actions/cache,
+	  actions/upload-artifact) never received automated update PRs.
 
 1.3.6:
 	FIXES:
