@@ -549,8 +549,12 @@ creating the target language files on disk.}\\
 {\ttfamily -Wdebug-compiler} & {\small Enable debugging during the actual compile time.}\\  \\
 \textbf{Language Options} & \textbf{Description}\\
 \midrule
+{\ttfamily -fall-defs-global} & {\small When generating code for types embedded inside another type, expose
+the inner type's descriptor and helper functions globally (non-static) instead of hiding them as file-local.}\\
 {\ttfamily -fbless-SIZE} & {\small Allow SIZE() constraint for INTEGER, ENUMERATED, and other types for which this constraint is normally prohibited by the standard.
 This is a violation of an ASN.1 standard and compiler may fail to produce the meaningful code.}\\
+{\ttfamily -fcomplex-threshold=\emph{<value>}} & {\small Threshold value, in number of members, beyond which the compiler
+switches a structure's members to indirect (pointer) storage instead of storing them inline. Must be between 1 and 500; the default is 4.}\\
 {\ttfamily -fcompound-names} & {\small Use complex names for C structures. Using complex names prevents
 name clashes in case the module reuses the same identifiers in multiple
 contexts.}\\
@@ -566,6 +570,8 @@ manually. }\\
 {\ttfamily -fno-constraints} & {\small Do not generate the ASN.1 subtype constraint checking code. This
 may produce a shorter executable.}\\
 {\ttfamily -fno-include-deps} & {\small Do not generate the courtesy \#include lines for non-critical dependencies.}\\
+{\ttfamily -fprefer-import-source} & {\small Require an explicit name listing in the IMPORTS group (xp\_members) for a symbol to be
+considered as imported from that group, instead of falling back to scanning the whole body of the FROM module. Fixes ambiguous same-name imports.}\\
 {\ttfamily -fprefix=\emph{<prefix>}} & {\small Add the specified prefix to all generated type names and filenames. This helps avoid naming conflicts in several scenarios: (1) \textbf{System header conflicts}: On case-insensitive filesystems (macOS HFS+, Windows), ASN.1 types like \texttt{Time} may collide with system header \texttt{<time.h>}. asn1c now automatically disambiguates these generated filenames (for example, \texttt{Time.h} becomes \texttt{asn1c\_time.h} when no explicit prefix is set). Using \texttt{-fprefix=ASN1\_} still generates \texttt{ASN1\_Time.h} when a project-specific namespace is desired. (2) \textbf{Multiple ASN.1 modules}: When generating code for multiple ASN.1 syntaxes with type name clashes, a prefix prevents symbol collisions. (3) \textbf{Integration with existing code}: Prefixes help avoid conflicts with existing types in your codebase. When used with \texttt{-pdu} options, the prefix is automatically applied to PDU definitions in \texttt{converter-example.mk}. For example, \texttt{-fprefix=ASN1\_ -pdu=Certificate} generates \texttt{-DPDU=ASN1\_Certificate}. With \texttt{-pdu=all} or \texttt{-pdu=auto}, the generated \texttt{converter-example.mk} includes instructions for selecting specific prefixed PDU types.}\\
 {\ttfamily -funnamed-unions} & {\small Enable  unnamed  unions in the definitions of target language's structures.}\\
 {\ttfamily -fwide-types} & {\small Use the unbounded data types (INTEGER\_t, ENUMERATED\_t, REAL\_t) by default, instead of machine's native data types (long, double).}\\
@@ -584,7 +590,9 @@ may produce a shorter executable.}\\
 {\ttfamily -no-gen-example} & {\small Do not generate the ASN.1 format converter example.}\\
 {\ttfamily -pdu=\{\textbf{all}|\textbf{auto}|\emph{Type}\}} & {\small Create a PDU table for specified types, or discover the Protocol Data Units automatically.
 In case of \texttt{-pdu=\textbf{all}}, all ASN.1 types defined in all modules will form a PDU table. In case of \texttt{-pdu=\textbf{auto}}, all types not referenced by any other type will form a PDU table. If \texttt{\emph{Type}} is an ASN.1 type identifier, it is added to a PDU table. The last form may be specified multiple times.}\\
-{\ttfamily -fgen-only-pdu-deps} & {\small Generate code only for types that are dependencies of \texttt{-pdu} types. This includes types referenced in Information Object Class tables, parameterized types, and constraint-based IOC references. Useful for large specifications like F1AP where only a subset of types is needed. See \fref{sec:IOC-Support}.}\\ \\
+{\ttfamily -fgen-only-pdu-deps} & {\small Generate code only for types that are dependencies of \texttt{-pdu} types. This includes types referenced in Information Object Class tables, parameterized types, and constraint-based IOC references. Useful for large specifications like F1AP where only a subset of types is needed. See \fref{sec:IOC-Support}.}\\
+{\ttfamily -flink-skeletons} & {\small Symlink the runtime skeleton support files into the destination directory instead of copying them. Not available on Windows, where files are always copied.}\\
+{\ttfamily -flist-deps} & {\small List PDU dependencies (requires \texttt{-pdu} option, no code generated).}\\ \\
 \textbf{Output Options} & \textbf{Description}\\
 \midrule
 {\ttfamily -print-class-matrix} & {\small When \texttt{-EF} options are given, this option instructs the compiler to print out the collected Information Object Class matrix.}\\
