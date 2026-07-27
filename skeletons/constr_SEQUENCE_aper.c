@@ -7,6 +7,9 @@
 #include <constr_SEQUENCE.h>
 #include <OPEN_TYPE.h>
 #include <aper_opentype.h>
+#include <string.h>   /* strncmp() — used to identify NULL-typed extension
+                       * fields without introducing a hard link
+                       * dependency on NULL.o */
 
 /*
  * Check whether we are inside the extensions group.
@@ -178,8 +181,10 @@ SEQUENCE_decode_aper(const asn_codec_ctx_t *opt_codec_ctx,
         if(!epres) ASN__DECODE_STARVED;
 
         /* Get the extensions map */
-        if(per_get_many_bits(pd, epres, 0, bmlength))
+        if(per_get_many_bits(pd, epres, 0, bmlength)) {
+            FREEMEM(epres);
             ASN__DECODE_STARVED;
+        }
 
         memset(&epmd, 0, sizeof(epmd));
         epmd.buffer = epres;
@@ -188,8 +193,10 @@ SEQUENCE_decode_aper(const asn_codec_ctx_t *opt_codec_ctx,
                   td->name, bmlength, *epres);
 
         /* Deal with padding */
-        if (aper_get_align(pd) < 0)
+        if (aper_get_align(pd) < 0) {
+            FREEMEM(epres);
             ASN__DECODE_STARVED;
+        }
 
         /* Go over extensions and read them in */
         for(edx = specs->first_extension; edx < td->elements_count; edx++) {
@@ -221,7 +228,42 @@ SEQUENCE_decode_aper(const asn_codec_ctx_t *opt_codec_ctx,
             rv = aper_open_type_get(opt_codec_ctx, elm->type,
                                     elm->encoding_constraints.per_constraints,
                                     memb_ptr2, pd);
-            if(rv.code != RC_OK) {
+            if(rv.code == RC_WMORE) {
+                /* Wire truncation inside the open-type wrapper (couldn't
+                 * read length determinant or the declared number of
+                 * content bytes). Real wire violation — propagate. */
+                FREEMEM(epres);
+                return rv;
+            }
+            if(rv.code != RC_OK && elm->type->name
+               && strncmp(elm->type->name, "NULL", 4) == 0) {
+                /*
+                 * Narrow forward-compat carve-out: the schema deliberately
+                 * declares this extension addition as `NULL`, a placeholder
+                 * whose only purpose is to preserve extension-bitmap
+                 * positional numbering vs. the wire. Its inner decoder
+                 * consumes zero bits, so aper_open_type_get_simple's
+                 * padding check will fail whenever the wire actually
+                 * carries a non-empty payload at this position — which is
+                 * exactly what the placeholder is there to acknowledge
+                 * and discard.
+                 *
+                 * The open-type wrapper has already advanced pd past this
+                 * extension's bytes (they were consumed into a temporary
+                 * buffer before dispatch), so silently continuing here is
+                 * safe: subsequent extensions still decode at their
+                 * correct wire positions.
+                 *
+                 * Restricting the skip to `NULL`-typed extensions
+                 * preserves strict rejection for every other schema/wire
+                 * mismatch inside extension additions.
+                 */
+                ASN_DEBUG("Skipping payload for NULL-placeholder extension %s in %s",
+                          elm->name, td->name);
+                if(elm->flags & ATF_POINTER) {
+                    *memb_ptr2 = NULL;  /* field absent from decoded tree */
+                }
+            } else if(rv.code != RC_OK) {
                 FREEMEM(epres);
                 return rv;
             }

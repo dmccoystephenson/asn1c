@@ -23,6 +23,12 @@ typedef struct OCTET_STRING {
 		int bits_collected;          /* Number of bits in accumulated_value */
 		int padding_seen;            /* Whether padding was encountered */
 		int decoder_initialized;     /* Whether decoder state is valid */
+		/*
+		 * Format pinned by the first non-whitespace chunk so that all
+		 * subsequent chunks of the same value use the same converter.
+		 * 0 = undecided, 1 = hex, 2 = base64.
+		 */
+		int format_decided;
 	} _xer_decode_state;
 } OCTET_STRING_t;
 
@@ -61,8 +67,10 @@ xer_type_encoder_f OCTET_STRING_encode_xer_base64;
 #if !defined(ASN_DISABLE_JER_SUPPORT)
 jer_type_decoder_f OCTET_STRING_decode_jer_hex;     /* Hexadecimal */
 jer_type_decoder_f OCTET_STRING_decode_jer_utf8;    /* ASCII/UTF-8 */
+jer_type_decoder_f OCTET_STRING_decode_jer_base64;  /* Base64 */
 jer_type_encoder_f OCTET_STRING_encode_jer;
 jer_type_encoder_f OCTET_STRING_encode_jer_utf8;
+jer_type_encoder_f OCTET_STRING_encode_jer_base64;
 #endif  /* !defined(ASN_DISABLE_JER_SUPPORT) */
 
 #if !defined(ASN_DISABLE_OER_SUPPORT)
@@ -154,6 +162,17 @@ typedef struct asn_OCTET_STRING_specifics_s {
         ASN_OSUBV_U16, /* 16-bit character (BMPString) */
         ASN_OSUBV_U32  /* 32-bit character (UniversalString) */
     } subvariant;
+
+    /*
+     * Only meaningful for ASN_OSUBV_BIT (BIT STRING).
+     * Non-zero when the BIT STRING type has a NamedBitList: per
+     * X.680 (2015) #22.7, trailing 0 bits may only be treated as
+     * insignificant (and stripped by the UPER encoder) when the
+     * type has a NamedBitList. Placed last so that existing static
+     * initializers (which do not mention this field) zero-fill it,
+     * preserving the "no NamedBitList" behavior by default.
+     */
+    unsigned has_named_bits;
 } asn_OCTET_STRING_specifics_t;
 
 extern asn_OCTET_STRING_specifics_t asn_SPC_OCTET_STRING_specs;

@@ -16,7 +16,7 @@ The asn1c is arguably the most evolved open source ASN.1 compiler.
 
 ## Latest release
 
-Current release: **1.4.3**
+Current release: **1.5.0**
 
 This release adds the `-fprefer-import-source` flag, which fixes incorrect type
 binding when two modules export identically-named types and a consumer imports
@@ -26,6 +26,21 @@ and member symbols, parser/compiler warning cleanup, circular-reference
 include fixes, and multiple code-scanning fixes. It also addresses security
 vulnerabilities, including formatting-related code scanning findings and
 hardening of integer decoder edge cases.
+
+### Upgrade warning: unknown extensions
+
+> **Important:** Decoding behavior for unknown extensions has changed from
+> "fail" to "skip/relay". Evaluate the impact on your application before
+> upgrading; define `ASN_REJECT_UNKNOWN_EXTENSIONS` to restore the previous
+> strict behavior.
+
+This forward-compatible default applies to unknown alternatives of extensible
+UPER/OER `CHOICE` values and unknown additions of extensible UPER `ENUMERATED`
+values. Existing deployments may rely on the old `RC_FAIL` result as an
+implicit input-validation gate or as a protocol error in a state machine.
+Compile all decoder skeleton objects with the macro and perform a clean rebuild;
+defining it only in application code does not change an already-built runtime
+library. Compatibility warning contributed by <shakespark@gmail.com>.
 
 See [ChangeLog](ChangeLog) for the complete release history and
 [release-notes/v1.4.md](release-notes/v1.4.md) for the v1.4 release notes.
@@ -61,9 +76,41 @@ CANONICAL-APER | aper_encode()              | *-APER        | aper_decode()
 BASIC-XER      | xer_encode(XER_F_BASIC)    | *-XER         | xer_decode()
 CANONICAL-XER  | xer_encode(XER_F_CANONICAL)| *-XER         | xer_decode()
 JER            | jer_encode()               | JER           | jer_decode()
+CBOR           | cbor_encode()              | CBOR          | cbor_decode()
 
 *) Asterisk means both BASIC and CANONICAL variants.
 </details>
+
+# XER and JER Encoding Instructions
+
+asn1c supports schema-level XER and JER encoding instructions for selected
+standard-style encodings. Supported instructions include XER `BASE64`, `TEXT`,
+`DECIMAL`, `GLOBAL-DEFAULTS MODIFIED-ENCODINGS`, and the legacy XER OCTET
+STRING controls `hexadecimal` and `utf8`; JER supports `BASE64`, enumerated
+value `TEXT`, and member `NAME`.
+
+```asn1
+Flag ::= [TEXT] BOOLEAN
+Blob ::= [JER:BASE64] OCTET STRING
+
+ENCODING-CONTROL XER
+    GLOBAL-DEFAULTS MODIFIED-ENCODINGS
+    DECIMAL Ratio
+    TEXT Count.one AS "uno"
+END
+
+ENCODING-CONTROL JER
+    NAME Packet.payload AS "payload64"
+    TEXT Mode.busy AS "occupied"
+END
+```
+
+Bare `[BASE64]` remains a XER instruction for compatibility; use
+`[JER:BASE64]` for JER. XER `DECIMAL` applies only to `REAL` and requires
+`GLOBAL-DEFAULTS MODIFIED-ENCODINGS`. JER `NAME` changes JSON keys only; it
+does not rename C fields or XER XML tags. See
+[ENCODING_CONTROL_STATUS.md](ENCODING_CONTROL_STATUS.md) for the support
+matrix and diagnostics.
 
 # Build and Install
 
@@ -77,6 +124,14 @@ for a short installation guide.
 For the list of asn1c command line options, see `asn1c -h` or `man asn1c`.
 
 The comprehensive documentation on this compiler is in [doc/asn1c-usage.pdf](doc/asn1c-usage.pdf).
+
+Extensible UPER and OER types decode unknown extension additions
+forward-compatibly by default. Unknown CHOICE alternatives are skipped and
+reported with no selected local alternative; unknown UPER ENUMERATED values
+are represented by the reserved `LONG_MAX - extension_index` range so they
+can be relayed with the same PER transfer syntax. Applications that require
+the historical strict rejection behavior may compile generated skeletons
+with `ASN_REJECT_UNKNOWN_EXTENSIONS`; this forfeits forward compatibility.
 
 Please also read the [FAQ](FAQ) file.
 
@@ -193,7 +248,6 @@ the error occurred:
 
 For more details, see [PARTIAL_DECODING.md](PARTIAL_DECODING.md).
 
-
 -- 
-Lev Walkin
-vlm@lionet.info
+Mouse and Lev Walkin
+<none>    vlm@lionet.info

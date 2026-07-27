@@ -6,8 +6,15 @@ section always names it) and how this fork tracks upstream.
 
 ## Supported Versions
 
+| Version | Supported |
+| ------- | --------- |
+| `vlm_master` (branch) | Yes |
+| 1.5.0 and earlier | No |
+
 Only the `vlm_master` branch receives security fixes; tagged/released versions
 do not get patch releases. Build from `vlm_master` for the latest fixes.
+
+---
 
 ## Security Surfaces
 
@@ -30,7 +37,9 @@ surface. Examples of in-scope vulnerabilities:
 - Incorrect constraint validation accepting out-of-range values
 - Denial-of-service via crafted encoded messages
 
-## Reporting a Vulnerability
+---
+
+## Reporting
 
 **Do not open a public GitHub issue for generated-code or skeleton vulnerabilities.**
 
@@ -47,6 +56,20 @@ Include:
 2. Description of the vulnerability and its potential impact
 3. Steps to reproduce — a minimal encoded input that triggers the issue
 4. Proof-of-concept or crash output if available (stack trace, ASAN report, etc.)
+5. Suggested fix or patch (optional)
+
+---
+
+## Response Timeline
+
+| Milestone | Target |
+| --------- | ------ |
+| Acknowledgment | Within 72 hours |
+| Initial assessment | Within 7 days |
+| Fix or mitigation | Within 90 days |
+| Public disclosure | Coordinated with reporter after fix is available |
+
+---
 
 ## Notes for Downstream Maintainers
 
