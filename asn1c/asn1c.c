@@ -679,6 +679,8 @@ usage(const char *av0) {
 "  -Wdebug-compiler      --//-- compiler\n"
 "\n"
 
+"  -fall-defs-global     Expose descriptors/helpers of types embedded inside\n"
+"                        another type globally instead of hiding them static\n"
 "  -fbless-SIZE          Allow SIZE() constraint for INTEGER etc (non-std.)\n"
 "  -fcomplex-threshold=<value>   Threshold value beyond which to use indirection\n"
 "  -fcompound-names      Disambiguate C's struct NAME's inside top-level types\n"
@@ -698,6 +700,8 @@ usage(const char *av0) {
 "                        Default: auto.  Values not fitting the policy are\n"
 "                        generated as INTEGER_t.\n"
 "  -fgen-only-pdu-deps   Generate code only for types that are dependencies of -pdu types\n"
+"  -flink-skeletons      Symlink runtime skeleton files instead of copying them\n"
+"                        (not available on Windows, where files are always copied)\n"
 "  -flist-deps           List PDU dependencies (requires -pdu option, no code generated)\n"
 "  -fprefix=<prefix>     Add the specified prefix to generated types\n"
 "\n"
