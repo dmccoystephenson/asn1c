@@ -70,12 +70,23 @@ CBOR and other encoding rules.
 
 ## Language Options
 
+-fall-defs-global
+:   When generating code for types embedded inside another type, expose
+    the inner type's descriptor and helper functions globally (non-`static`)
+    instead of hiding them as file-local.
+
 -fbless-SIZE
 :   Allow `SIZE()` constraint for `INTEGER`, `ENUMERATED`,
     and other types for which this constraint is normally prohibited
     by the standard.
     This is a violation of ASN.1 standard, and the compiler may
     fail to produce a meaningful code.
+
+-fcomplex-threshold=*value*
+:   Threshold value, in number of members, beyond which the compiler
+    switches a structure's members to indirect (pointer) storage
+    instead of storing them inline.  *value* must be between 1 and 500;
+    the default is 4.
 
 -fcompound-names
 :   Using this option prevents name collisions in the target source code
@@ -174,6 +185,11 @@ CBOR and other encoding rules.
 
 -fgen-only-pdu-deps
 :   Generate code only for types that are dependencies of -pdu types
+
+-flink-skeletons
+:   Symlink the runtime skeleton support files into the destination
+    directory instead of copying them. Not available on Windows, where
+    files are always copied.
 
 -flist-deps
 :	List PDU dependencies (requires -pdu option, no code generated)

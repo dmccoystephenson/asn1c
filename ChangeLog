@@ -1,4 +1,11 @@
 Changes since v1.5.0:
+	* Documented five `-f*` compiler flags (`-fall-defs-global`,
+	  `-fcomplex-threshold=<value>`, `-flink-skeletons`, `-flist-deps`,
+	  `-fprefer-import-source`) that were parsed by `asn1c.c` but missing
+	  from the Language/Codecs Generation Options tables in
+	  `doc/docsrc/asn1c-usage.tex` and/or `doc/man/asn1c.man.md`. Added a
+	  `check-language-option-docs.sh` regression test asserting each stays
+	  documented in both files.
 	* Made the generated-constraint warning regression test compatible with
 	  Automake's standard top_srcdir/top_builddir test environment.
 	* Avoided redundant parentheses around standalone equality comparisons in
