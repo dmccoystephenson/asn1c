@@ -18,9 +18,10 @@ for f in "${SRC_MAIN}" "${DOC_MAN_MD}" "${DOC_USAGE_TEX}"; do
 done
 
 # Every -f<flag> parsed by the 'f' case in asn1c.c must have a row/entry in
-# both doc/man/asn1c.man.md and doc/docsrc/asn1c-usage.tex, so the two
-# reference docs cannot silently drift out of sync with the CLI again
-# (see issue #9).
+# the CLI's own usage() help text, doc/man/asn1c.man.md, and
+# doc/docsrc/asn1c-usage.tex, so the three cannot silently drift out of sync
+# with each other again (see issue #9; usage() itself was missing
+# -fall-defs-global and -flink-skeletons despite both docs having them).
 for flag in \
     "fall-defs-global" \
     "fcomplex-threshold" \
@@ -28,6 +29,8 @@ for flag in \
     "flist-deps" \
     "fprefer-import-source" \
     ; do
+    grep -q -- "-${flag}" "${SRC_MAIN}" \
+        || die "asn1c/asn1c.c usage() is missing -${flag}"
     grep -q -- "-${flag}" "${DOC_MAN_MD}" \
         || die "doc/man/asn1c.man.md is missing -${flag}"
     grep -q -- "-${flag}" "${DOC_USAGE_TEX}" \

@@ -1,4 +1,10 @@
 Changes since v1.5.0:
+	* Added `-fall-defs-global` and `-flink-skeletons` to `asn1c`'s own
+	  `usage()`/`--help` text; both flags were already documented in
+	  `doc/man/asn1c.man.md` and `doc/docsrc/asn1c-usage.tex` and are parsed
+	  by `asn1c.c`, but were missing from the CLI's help output. Extended
+	  `check-language-option-docs.sh` to also assert `asn1c.c`'s usage() text
+	  stays in sync, not just the two doc files.
 	* Documented five `-f*` compiler flags (`-fall-defs-global`,
 	  `-fcomplex-threshold=<value>`, `-flink-skeletons`, `-flist-deps`,
 	  `-fprefer-import-source`) that were parsed by `asn1c.c` but missing
