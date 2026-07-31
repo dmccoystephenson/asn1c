@@ -1,4 +1,11 @@
 Changes since v1.5.0:
+	* Corrected `REQUIREMENTS.md`, which claimed an exact `bison=2.x`
+	  requirement ("not 3.x"). The grammar (`libasn1parser/asn1p_y.y`) uses
+	  no bison-2.x-only directives, and CI has been building successfully
+	  with the bison 3.x shipped on `ubuntu-latest` runners, so the
+	  version pin was stale. Dropped the exact-version constraint and
+	  updated the notation example to reference `automake-1.15` instead,
+	  which is still an accurate minimum-version claim.
 	* Documented the `-no-gen-JER` switch, which was parsed by `asn1c.c` and
 	  listed in its `usage()` text, but missing from `doc/man/asn1c.man.md`,
 	  `doc/man/asn1c.1`, and `doc/docsrc/asn1c-usage.tex`.  JER support code
