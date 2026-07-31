@@ -539,6 +539,7 @@ specification to the standard output.}\\
 creating the target language files on disk.}\\
 {\ttfamily -R} & {\small Restrict the compiler to generate only the ASN.1 tables, omitting the usual support code.}\\
 {\ttfamily -S~\emph{<directory>}} & {\small Use the specified directory with ASN.1 skeleton files.}\\
+{\ttfamily -D~\emph{<directory>}} & {\small Place the generated files into the specified destination directory. The default is the current directory.}\\
 {\ttfamily -X} & {\small Generate the XML DTD for the specified ASN.1 modules.}\\\\
 \textbf{Warning Options} & \textbf{Description}\\
 \midrule
@@ -581,6 +582,7 @@ considered as imported from that group, instead of falling back to scanning the 
 \midrule
 {\ttfamily -no-gen-BER} & {\small Do not generate the Basic Encoding Rules (BER, X.690) support code.}\\
 {\ttfamily -no-gen-XER} & {\small Do not generate the XML Encoding Rules (XER, X.693) support code.}\\
+{\ttfamily -no-gen-JER} & {\small Do not generate the JSON Encoding Rules (JER, X.697) support code. By default, JER support code is generated.}\\
 {\ttfamily -no-gen-OER} & {\small Do not generate the Octet Encoding Rules (OER, X.696) support code.}\\
 {\ttfamily -no-gen-CBOR} & {\small Do not generate the Concise Binary Object Representation (CBOR, RFC~8949) support code. By default, CBOR support code is generated.}\\
 {\ttfamily -no-gen-UPER} & {\small Do not generate the Unaligned Packed Encoding Rules (PER, X.691) support code.}\\
@@ -588,6 +590,7 @@ considered as imported from that group, instead of falling back to scanning the 
 {\ttfamily -no-gen-print} & {\small Do not generate the print code.}\\
 {\ttfamily -no-gen-random-fill} & {\small Do not generate the random fill code.}\\
 {\ttfamily -no-gen-example} & {\small Do not generate the ASN.1 format converter example.}\\
+{\ttfamily -gen-autotools} & {\small Generate an example top-level \texttt{configure.ac} and \texttt{Makefile.am} for the generated code.}\\
 {\ttfamily -pdu=\{\textbf{all}|\textbf{auto}|\emph{Type}\}} & {\small Create a PDU table for specified types, or discover the Protocol Data Units automatically.
 In case of \texttt{-pdu=\textbf{all}}, all ASN.1 types defined in all modules will form a PDU table. In case of \texttt{-pdu=\textbf{auto}}, all types not referenced by any other type will form a PDU table. If \texttt{\emph{Type}} is an ASN.1 type identifier, it is added to a PDU table. The last form may be specified multiple times.}\\
 {\ttfamily -fgen-only-pdu-deps} & {\small Generate code only for types that are dependencies of \texttt{-pdu} types. This includes types referenced in Information Object Class tables, parameterized types, and constraint-based IOC references. Useful for large specifications like F1AP where only a subset of types is needed. See \fref{sec:IOC-Support}.}\\
