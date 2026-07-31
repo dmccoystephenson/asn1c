@@ -200,6 +200,10 @@ CBOR and other encoding rules.
 -no-gen-XER
 :   Do not generate the XML Encoding Rules (XER, X.693) support code
 
+-no-gen-JER
+:   Do not generate the JSON Encoding Rules (JER, X.697) support code.
+    By default, JER encoder and decoder support code is generated.
+
 -no-gen-OER
 :   Do not generate the Octet Encoding Rules (OER, X.696) support code
 
