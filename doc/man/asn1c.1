@@ -76,12 +76,23 @@ Enable ASN.1 syntax tree fixer debugging during the fixing stage.
 Enable debugging during the actual compile time.
 .SS Language Options
 .TP
+\-fall\-defs\-global
+When generating code for types embedded inside another type, expose the
+inner type\(cqs descriptor and helper functions globally
+(non\-\f[CR]static\f[R]) instead of hiding them as file\-local.
+.TP
 \-fbless\-SIZE
 Allow \f[CR]SIZE()\f[R] constraint for \f[CR]INTEGER\f[R],
 \f[CR]ENUMERATED\f[R], and other types for which this constraint is
 normally prohibited by the standard.
 This is a violation of ASN.1 standard, and the compiler may fail to
 produce a meaningful code.
+.TP
+\-fcomplex\-threshold=\f[I]value\f[R]
+Threshold value, in number of members, beyond which the compiler switches
+a structure\(cqs members to indirect (pointer) storage instead of storing
+them inline.
+\f[I]value\f[R] must be between 1 and 500; the default is 4.
 .TP
 \-fcompound\-names
 Using this option prevents name collisions in the target source code by
@@ -200,6 +211,11 @@ stored as static arbitrary\-precision constraint values.
 .TP
 \-fgen\-only\-pdu\-deps
 Generate code only for types that are dependencies of \-pdu types
+.TP
+\-flink\-skeletons
+Symlink the runtime skeleton support files into the destination directory
+instead of copying them.
+Not available on Windows, where files are always copied.
 .TP
 \-flist\-deps
 List PDU dependencies (requires \-pdu option, no code generated)

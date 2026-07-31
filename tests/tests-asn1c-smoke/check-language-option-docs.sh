@@ -6,6 +6,7 @@ top_srcdir=${top_srcdir:-../..}
 
 SRC_MAIN="${top_srcdir}/asn1c/asn1c.c"
 DOC_MAN_MD="${top_srcdir}/doc/man/asn1c.man.md"
+DOC_MAN_ROFF="${top_srcdir}/doc/man/asn1c.1"
 DOC_USAGE_TEX="${top_srcdir}/doc/docsrc/asn1c-usage.tex"
 
 die() {
@@ -13,7 +14,7 @@ die() {
     exit 1
 }
 
-for f in "${SRC_MAIN}" "${DOC_MAN_MD}" "${DOC_USAGE_TEX}"; do
+for f in "${SRC_MAIN}" "${DOC_MAN_MD}" "${DOC_MAN_ROFF}" "${DOC_USAGE_TEX}"; do
     [ -f "$f" ] || die "$f not found (moved, renamed, or missing from EXTRA_DIST?)"
 done
 
@@ -36,5 +37,24 @@ for flag in \
     grep -q -- "-${flag}" "${DOC_USAGE_TEX}" \
         || die "doc/docsrc/asn1c-usage.tex is missing -${flag}"
 done
+
+# doc/man/asn1c.1 is pandoc-generated from doc/man/asn1c.man.md and is what
+# actually ships to users (dist_man1_MANS in doc/man/Makefile.am); it has
+# fallen out of sync with its source before because regeneration requires
+# pandoc and is easy to forget (see issue #13). Pandoc escapes every literal
+# hyphen as "\-", so each flag's roff form is checked explicitly here rather
+# than derived, since POSIX sh has no portable global string substitution.
+check_roff_flag() {
+    plain=$1
+    roff=$2
+    grep -qF -- "${roff}" "${DOC_MAN_ROFF}" \
+        || die "doc/man/asn1c.1 is missing -${plain} (stale generated man page; regenerate with 'make -C doc/man asn1c.1')"
+}
+
+check_roff_flag "fall-defs-global" '\-fall\-defs\-global'
+check_roff_flag "fcomplex-threshold" '\-fcomplex\-threshold'
+check_roff_flag "flink-skeletons" '\-flink\-skeletons'
+check_roff_flag "flist-deps" '\-flist\-deps'
+check_roff_flag "fprefer-import-source" '\-fprefer\-import\-source'
 
 exit 0

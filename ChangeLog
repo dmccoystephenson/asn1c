@@ -1,4 +1,11 @@
 Changes since v1.5.0:
+	* Regenerated `doc/man/asn1c.1` to add the `-fall-defs-global`,
+	  `-fcomplex-threshold=<value>`, and `-flink-skeletons` entries already
+	  present in its `doc/man/asn1c.man.md` source; the shipped man page had
+	  fallen out of sync after an earlier doc commit updated the source but
+	  not the generated roff. Extended `check-language-option-docs.sh` to
+	  also assert each tracked flag appears in `doc/man/asn1c.1`, so this
+	  class of generated-artifact skew now fails `make check`.
 	* Added `-fall-defs-global` and `-flink-skeletons` to `asn1c`'s own
 	  `usage()`/`--help` text; both flags were already documented in
 	  `doc/man/asn1c.man.md` and `doc/docsrc/asn1c-usage.tex` and are parsed
