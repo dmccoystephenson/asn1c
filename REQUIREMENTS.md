@@ -10,12 +10,12 @@ which is also upward compatible with C++.
 ### Packages
 
 This notation specifies a minimum required package version (-ver)
-or an exact version (=ver). For example, bison=2.x requires the 2.x branch
-of bison, not 3.x.
+or an exact version (=ver). For example, automake-1.15 requires at least
+the 1.15 branch of automake.
 
  * automake-1.15
  * libtool
- * bison=2.x
+ * bison
  * flex
 
 ## To compile asn1c-generated code
