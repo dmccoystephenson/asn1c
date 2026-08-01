@@ -22,12 +22,15 @@ The implementation provides two key improvements:
 
 ### 1. Enhanced Error Messages
 
-The decoder now reports the exact position where decoding failed:
+The decoder now reports the exact byte position where decoding failed:
 ```
-test-message.uper: Decode failed at byte 12, bit 3: Input processing error
+test-message.uper: Decode failed at byte 12: Input processing error
 ```
 
-For PER/UPER encodings, both byte and bit positions are reported since PER is a bit-oriented encoding.
+For PER/UPER encodings, a bit-level position is additionally traced via
+`ASN_DEBUG` (`PER decoding failed at bit N (byte N, bit N)`), but that trace
+is only emitted when built with `--enable-ASN_DEBUG` (see
+[INSTALL.md](INSTALL.md)); it does not appear in the default `-P` output.
 
 ### 2. Partial Decoding Results
 
@@ -71,7 +74,8 @@ This shows:
 ### Code Changes
 
 1. **asn_codecs.h**: Added `preserve_partial_decoding` flag to `asn_codec_ctx_t`
-2. **uper_decoder.c**: Modified to report exact bit position on failure
+2. **uper_decoder.c**: Added an `ASN_DEBUG`-gated bit-position trace on failure
+   (requires `--enable-ASN_DEBUG`; not part of the default `-P` output)
 3. **converter-example.c**: Added `-P` option and partial structure printing
 
 ### How It Works
