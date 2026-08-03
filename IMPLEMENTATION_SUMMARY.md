@@ -118,9 +118,9 @@ The `preserve_partial_decoding` flag in `asn_codec_ctx_t` can be used to:
 - Ensures partial results shown exactly once, only when truly needed
 
 **File**: `skeletons/converter-example.c`
-- Lines ~892: Added `partial_printed` flag
-- Lines ~956: Check `rd == 0 && !partial_printed` in RC_WMORE handler
-- Lines ~1022: Check `!partial_printed` in cleanup section
+- Added `partial_printed` flag
+- Checks `rd == 0 && !partial_printed` in the RC_WMORE handler
+- Checks `!partial_printed` in the cleanup section
 
 ## Status
 

@@ -190,5 +190,5 @@ To apply remaining fixes, for each file:
 ## References
 
 - Security Advisory: GHSA-pc8m-6q65-9mwf
-- Referenced lines: constr_SEQUENCE_ber.c:553, constr_CHOICE_ber.c:418
+- Referenced lines: constr_SEQUENCE_ber.c:540, constr_CHOICE_ber.c:384
 - Similar vulnerabilities: CVE-2021-41043
