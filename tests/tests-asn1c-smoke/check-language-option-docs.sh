@@ -25,10 +25,24 @@ done
 # -fall-defs-global and -flink-skeletons despite both docs having them).
 for flag in \
     "fall-defs-global" \
+    "fbless-SIZE" \
     "fcomplex-threshold" \
+    "fcompound-names" \
+    "findirect-choice" \
+    "fincludes-quoted" \
+    "fknown-extern-type" \
+    "fline-refs" \
+    "fno-constraints" \
+    "fno-include-deps" \
     "flink-skeletons" \
     "flist-deps" \
+    "fgen-only-pdu-deps" \
     "fprefer-import-source" \
+    "fprefix" \
+    "funnamed-unions" \
+    "fwide-types" \
+    "flong-size" \
+    "finteger-native-type" \
     ; do
     grep -q -- "-${flag}" "${SRC_MAIN}" \
         || die "asn1c/asn1c.c usage() is missing -${flag}"
@@ -52,9 +66,23 @@ check_roff_flag() {
 }
 
 check_roff_flag "fall-defs-global" '\-fall\-defs\-global'
+check_roff_flag "fbless-SIZE" '\-fbless\-SIZE'
 check_roff_flag "fcomplex-threshold" '\-fcomplex\-threshold'
+check_roff_flag "fcompound-names" '\-fcompound\-names'
+check_roff_flag "findirect-choice" '\-findirect\-choice'
+check_roff_flag "fincludes-quoted" '\-fincludes\-quoted'
+check_roff_flag "fknown-extern-type" '\-fknown\-extern\-type'
+check_roff_flag "fline-refs" '\-fline\-refs'
+check_roff_flag "fno-constraints" '\-fno\-constraints'
+check_roff_flag "fno-include-deps" '\-fno\-include\-deps'
 check_roff_flag "flink-skeletons" '\-flink\-skeletons'
 check_roff_flag "flist-deps" '\-flist\-deps'
+check_roff_flag "fgen-only-pdu-deps" '\-fgen\-only\-pdu\-deps'
 check_roff_flag "fprefer-import-source" '\-fprefer\-import\-source'
+check_roff_flag "fprefix" '\-fprefix='
+check_roff_flag "funnamed-unions" '\-funnamed\-unions'
+check_roff_flag "fwide-types" '\-fwide\-types'
+check_roff_flag "flong-size" '\-flong\-size'
+check_roff_flag "finteger-native-type" '\-finteger\-native\-type'
 
 exit 0
