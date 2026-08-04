@@ -6,11 +6,14 @@ Support for partial decoding when input message is truncated or when decoding fa
 ## Solution Implemented
 
 ### 1. Enhanced Error Reporting
-Modified the UPER decoder to report the exact position (byte and bit) where decoding failed, instead of just returning 0.
+Modified the UPER decoder to report the position reached before decoding failed, instead of just returning 0.
 
 **File**: `skeletons/uper_decoder.c`
 - Now calculates and returns the actual position reached before failure
-- Provides better debugging information through ASN_DEBUG messages
+- Additionally traces the bit-level position via `ASN_DEBUG`
+  (`PER decoding failed at bit N (byte N, bit N)`), which is only emitted when
+  built with `--enable-ASN_DEBUG`; the default `-P` output reports a byte
+  offset only
 
 ### 2. Partial Decoding Results
 Added `-P` command line option to the converter tool to print any successfully decoded fields when decoding fails.
@@ -85,7 +88,7 @@ The `preserve_partial_decoding` flag in `asn_codec_ctx_t` can be used to:
 ## Files Modified
 
 1. `skeletons/asn_codecs.h` - Added preserve_partial_decoding flag
-2. `skeletons/uper_decoder.c` - Report actual position on failure
+2. `skeletons/uper_decoder.c` - Report position reached on failure, plus an `ASN_DEBUG`-gated bit-position trace
 3. `skeletons/converter-example.c` - Added -P flag and partial output
 4. `PARTIAL_DECODING.md` - New user documentation
 5. `README.md` - Feature overview
@@ -118,9 +121,9 @@ The `preserve_partial_decoding` flag in `asn_codec_ctx_t` can be used to:
 - Ensures partial results shown exactly once, only when truly needed
 
 **File**: `skeletons/converter-example.c`
-- Lines ~892: Added `partial_printed` flag
-- Lines ~956: Check `rd == 0 && !partial_printed` in RC_WMORE handler
-- Lines ~1022: Check `!partial_printed` in cleanup section
+- Added `partial_printed` flag
+- Checks `rd == 0 && !partial_printed` in the RC_WMORE handler
+- Checks `!partial_printed` in the cleanup section
 
 ## Status
 

@@ -13,9 +13,16 @@ This security fix addresses CVE-XXXX / GHSA-pc8m-6q65-9mwf by adding recursion d
    - Added `ASN__ENCODER_RECURSION_DEPTH_INC()` macro for encoders
    - Added `ASN__ENCODER_RECURSION_DEPTH_DEC()` macro for encoders
    - Added `ASN__DECODER_RECURSION_DEPTH_CHECK(ctx)` macro for decoders
+   - Added per-codec counterparts for the encodings listed under "Remaining Work":
+     thread-local `uper_encoding_depth`, `aper_encoding_depth`, `oer_encoding_depth`,
+     `xer_encoding_depth`, and `jer_encoding_depth`, each with a matching
+     `<RULE>_ENCODER_RECURSION_DEPTH_INC()` / `_DEC()` macro pair. These are declared
+     and defined but not yet invoked by any codec — the remaining work is the call
+     sites, not the infrastructure.
 
 2. **asn_internal.c**
    - Defined thread-local `asn1_encoding_depth` variable with proper platform detection
+   - Defined the per-codec depth variables above under the same platform detection
 
 ### BER/DER Encoding (COMPLETE)
 
@@ -107,40 +114,48 @@ TYPE_decode_ENCODING(/* params */) {
 ## Remaining Work
 
 The following files follow the exact same pattern as the completed BER files. Each needs:
-1. Add `ASN__ENCODER_RECURSION_DEPTH_INC()` at encoder start
-2. Add `ASN__ENCODER_RECURSION_DEPTH_DEC()` before all encoder exits
+1. Add `<RULE>_ENCODER_RECURSION_DEPTH_INC()` at encoder start
+2. Add `<RULE>_ENCODER_RECURSION_DEPTH_DEC()` before all encoder exits
 3. Add `ASN__DECODER_RECURSION_DEPTH_CHECK(ctx)` after ctx initialization in decoders
 
-### UPER Encoding (20 files remaining)
+where `<RULE>` is `UPER`, `APER`, `OER`, `XER`, or `JER` — those macro pairs already
+exist in `skeletons/asn_internal.h`; only the call sites below are missing.
+
+Only the functions actually *defined* in each file are listed below. Several
+SEQUENCE OF and SET codecs are `#define` aliases onto the SET OF / SEQUENCE
+implementation (see `skeletons/constr_SEQUENCE_OF.h` and
+`skeletons/constr_SET.h`), so they are covered by whichever file defines the
+target function rather than needing an edit of their own.
+
+### UPER Encoding (4 files remaining)
 - `skeletons/constr_SEQUENCE_uper.c` - SEQUENCE_encode_uper(), SEQUENCE_decode_uper()
 - `skeletons/constr_CHOICE_uper.c` - CHOICE_encode_uper(), CHOICE_decode_uper()
-- `skeletons/constr_SEQUENCE_OF_uper.c` - SEQUENCE_OF_encode_uper(), SEQUENCE_OF_decode_uper()
+- `skeletons/constr_SEQUENCE_OF_uper.c` - SEQUENCE_OF_encode_uper() (SEQUENCE_OF_decode_uper is an alias for SET_OF_decode_uper)
 - `skeletons/constr_SET_OF_uper.c` - SET_OF_encode_uper(), SET_OF_decode_uper()
 
-### APER Encoding (8 files remaining)
+### APER Encoding (4 files remaining)
 - `skeletons/constr_SEQUENCE_aper.c` - SEQUENCE_encode_aper(), SEQUENCE_decode_aper()
 - `skeletons/constr_CHOICE_aper.c` - CHOICE_encode_aper(), CHOICE_decode_aper()
-- `skeletons/constr_SEQUENCE_OF_aper.c` - SEQUENCE_OF_encode_aper(), SEQUENCE_OF_decode_aper()
+- `skeletons/constr_SEQUENCE_OF_aper.c` - SEQUENCE_OF_encode_aper() (SEQUENCE_OF_decode_aper is an alias for SET_OF_decode_aper)
 - `skeletons/constr_SET_OF_aper.c` - SET_OF_encode_aper(), SET_OF_decode_aper()
 
-### OER Encoding (8 files remaining)
+### OER Encoding (3 files remaining)
 - `skeletons/constr_SEQUENCE_oer.c` - SEQUENCE_encode_oer(), SEQUENCE_decode_oer()
 - `skeletons/constr_CHOICE_oer.c` - CHOICE_encode_oer(), CHOICE_decode_oer()
-- `skeletons/constr_SEQUENCE_OF_oer.c` - SEQUENCE_OF_encode_oer(), SEQUENCE_OF_decode_oer()
-- `skeletons/constr_SET_OF_oer.c` - SET_OF_encode_oer(), SET_OF_decode_oer()
+- `skeletons/constr_SET_OF_oer.c` - SET_OF_encode_oer(), SET_OF_decode_oer() (both SEQUENCE OF OER codecs are aliases for these; there is no `constr_SEQUENCE_OF_oer.c`)
 
-### XER Encoding (10 files remaining)
+### XER Encoding (5 files remaining)
 - `skeletons/constr_SEQUENCE_xer.c` - SEQUENCE_encode_xer(), SEQUENCE_decode_xer()
 - `skeletons/constr_CHOICE_xer.c` - CHOICE_encode_xer(), CHOICE_decode_xer()
 - `skeletons/constr_SET_xer.c` - SET_encode_xer(), SET_decode_xer()
 - `skeletons/constr_SEQUENCE_OF_xer.c` - SEQUENCE_OF_encode_xer(), SEQUENCE_OF_decode_xer()
 - `skeletons/constr_SET_OF_xer.c` - SET_OF_encode_xer(), SET_OF_decode_xer()
 
-### JER Encoding (10 files remaining)
+### JER Encoding (5 files remaining)
 - `skeletons/constr_SEQUENCE_jer.c` - SEQUENCE_encode_jer(), SEQUENCE_decode_jer()
 - `skeletons/constr_CHOICE_jer.c` - CHOICE_encode_jer(), CHOICE_decode_jer()
-- `skeletons/constr_SET_jer.c` - SET_encode_jer(), SET_decode_jer()
-- `skeletons/constr_SEQUENCE_OF_jer.c` - SEQUENCE_OF_encode_jer(), SEQUENCE_OF_decode_jer()
+- `skeletons/constr_SET_jer.c` - SET_decode_jer() (SET has no JER encoder of its own; `constr_SET.c` reuses SEQUENCE_encode_jer per X.697 clause 29)
+- `skeletons/constr_SEQUENCE_OF_jer.c` - SEQUENCE_OF_encode_jer() (SEQUENCE_OF_decode_jer is an alias for SET_OF_decode_jer)
 - `skeletons/constr_SET_OF_jer.c` - SET_OF_encode_jer(), SET_OF_decode_jer()
 
 ## Security Impact
@@ -179,9 +194,9 @@ The following files follow the exact same pattern as the completed BER files. Ea
 
 To apply remaining fixes, for each file:
 1. Locate encoder function (search for `asn_enc_rval_t`)
-2. Add `ASN__ENCODER_RECURSION_DEPTH_INC()` after variable declarations
+2. Add the encoding's `<RULE>_ENCODER_RECURSION_DEPTH_INC()` after variable declarations
 3. Find all `return` and `ASN__ENCODE_FAILED` statements
-4. Add `ASN__ENCODER_RECURSION_DEPTH_DEC()` before each exit
+4. Add the matching `<RULE>_ENCODER_RECURSION_DEPTH_DEC()` before each exit
 5. Locate decoder function (search for `asn_dec_rval_t`)
 6. Find ctx assignment: `ctx = (asn_struct_ctx_t *)(..)`
 7. Add `ASN__DECODER_RECURSION_DEPTH_CHECK(ctx);` after ctx assignment
@@ -190,5 +205,5 @@ To apply remaining fixes, for each file:
 ## References
 
 - Security Advisory: GHSA-pc8m-6q65-9mwf
-- Referenced lines: constr_SEQUENCE_ber.c:553, constr_CHOICE_ber.c:418
+- Referenced lines: constr_SEQUENCE_ber.c:540, constr_CHOICE_ber.c:384
 - Similar vulnerabilities: CVE-2021-41043
