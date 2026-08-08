@@ -143,7 +143,7 @@ preference):
 
 New tests:
 17. In `check-XER-base64.c` (or new `check-XER-octstr-auto.c`, registered in
-    `tests-skeletons/Makefile.am`):
+    `tests/tests-skeletons/Makefile.am`):
     a. Default `xer_encode(&asn_DEF_OCTET_STRING, ...)` with `XER_F_BASIC` and
        `XER_F_CANONICAL` emits contiguous upper-case hex; round-trips via
        `_decode_xer_auto`.

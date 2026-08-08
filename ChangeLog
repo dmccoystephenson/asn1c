@@ -1,4 +1,21 @@
 Changes since v1.5.0:
+	* Added `tests/tests-asn1c-smoke/check-design-note-paths.sh`, a `make
+	  check` guard asserting that every directory-qualified source path
+	  cited by the top-level design notes still resolves in the tree. This
+	  class of drift was previously silent: `SECURITY_FIX_SUMMARY.md`
+	  had listed `skeletons/constr_SEQUENCE_OF_oer.c` ever since the note
+	  was written, even though no such file has ever existed (both OER
+	  SEQUENCE OF codecs are `#define` aliases onto `SET_OF_*_oer`), and it
+	  was caught only by a hand sweep.
+	  The guard found one further stale citation in
+	  `XER-OCTET-STRING-base64-plan.md`, which named
+	  `tests-skeletons/Makefile.am`; corrected to its real path,
+	  `tests/tests-skeletons/Makefile.am`. Bare file names and the function
+	  names cited beside each path are deliberately out of scope, being
+	  ambiguous and `#define`-aliased respectively. The design notes, plus
+	  `tests/f1ap-regression/JER_OPENTYPE_FIX_TEST.md` and the previously
+	  undistributed `tests/tests-integer-native/` sources, are now listed in
+	  `EXTRA_DIST` so the guard resolves them under `make distcheck` too.
 	* Corrected `REQUIREMENTS.md`, which claimed an exact `bison=2.x`
 	  requirement ("not 3.x"). The grammar (`libasn1parser/asn1p_y.y`) uses
 	  no bison-2.x-only directives, and CI has been building successfully
