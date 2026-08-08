@@ -163,9 +163,10 @@ New tests:
     whose Base64 is "ABCD") — must survive because the generated decoder is
     pinned to Base64 (step 12).
 19. Re-run `make check` end-to-end: tests-skeletons, tests-c-compiler
-    (XER fixtures such as `data-202/s1.xer` use bare upper-case hex — these
-    now decode as hex, as the standard requires), tests-randomized
-    (`xer_equivalent` round-trips with the hex default), tests-asn1c-compiler.
+    (XER fixtures such as `tests/tests-c-compiler/data-202/s1.xer` use bare
+    upper-case hex — these now decode as hex, as the standard requires),
+    tests-randomized (`xer_equivalent` round-trips with the hex default),
+    tests-asn1c-compiler.
 
 ## Phase 6 — Standard X.693 (2021) `[BASE64]` encoding instruction
 

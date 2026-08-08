@@ -1,4 +1,23 @@
 Changes since v1.5.0:
+	* Widened the extension list in
+	  `tests/tests-asn1c-smoke/check-design-note-paths.sh` to cover the
+	  document and encoding-fixture extensions the tree actually uses
+	  (`.tex`, `.pdf`, `.txt`, `.out`, `.asn`, `.in`, `.inc`, `.pl`, and the
+	  per-rule fixture suffixes `.ber`/`.der`/`.xer`/`.xbr`/`.per`/`.uper`/
+	  `.aper`/`.oer`/`.coer`/`.jer`). The original list stopped at source and
+	  build-system extensions, so a citation ending in anything else was
+	  skipped without a word — narrower coverage than the guard appeared to
+	  offer. The widened guard found one such citation:
+	  `XER-OCTET-STRING-base64-plan.md` named the XER fixture
+	  `data-202/s1.xer`, which resolves from `tests/tests-c-compiler/` but
+	  not from the tree root; expanded to its full path,
+	  `tests/tests-c-compiler/data-202/s1.xer`. The list stays enumerated
+	  rather than open, because an unconstrained extension pattern also
+	  matches non-paths such as a backticked tool version. Both newly
+	  reachable citations already reach the tarball via existing `EXTRA_DIST`
+	  entries (`doc/Makefile.am` ships `asn1c-*.pdf`,
+	  `tests/tests-c-compiler/Makefile.am` ships `data-202`), so `make
+	  distcheck` needs no further change.
 	* Added `tests/tests-asn1c-smoke/check-design-note-paths.sh`, a `make
 	  check` guard asserting that every directory-qualified source path
 	  cited by the top-level design notes still resolves in the tree. This
