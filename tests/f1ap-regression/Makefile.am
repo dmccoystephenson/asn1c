@@ -7,7 +7,9 @@ TESTS_ENVIRONMENT = \
 
 TESTS = $(dist_check_SCRIPTS)
 
-EXTRA_DIST = F1AP-16.7.0.asn
+# JER_OPENTYPE_FIX_TEST.md is cited by JER_OPENTYPE_FIX_SUMMARY.md, so it has
+# to reach the tarball for check-design-note-paths.sh to resolve it there.
+EXTRA_DIST = F1AP-16.7.0.asn JER_OPENTYPE_FIX_TEST.md
 
 CLEANFILES = *.[choa] *.d converter-example converter-example.mk Makefile.am.* asn_constant.h \
   test-jer-opentype.jer
