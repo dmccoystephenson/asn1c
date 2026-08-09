@@ -52,9 +52,18 @@ done
 # before the path is resolved; its accuracy is out of scope here.  A backticked
 # URL would otherwise look exactly like a directory-qualified path, so anything
 # carrying a scheme is dropped.
+#
+# The recognized extensions are enumerated rather than left open because an
+# unconstrained `.[A-Za-z0-9]+` also matches things that merely look like paths
+# -- a backticked tool version such as `bison/3.8.2` would be read as a citation
+# of bison/3.8.2 and reported missing.  The list therefore covers the source,
+# build, document and encoding-fixture extensions the tree actually uses; an
+# extension outside it is skipped silently, so a note citing a new kind of file
+# needs that extension added here (see issue #24, where a stale
+# `data-202/s1.xer` citation went unchecked because .xer was absent).
 missing=""
 for note in ${DESIGN_NOTES}; do
-    cited=$(grep -oE '`[^`]*/[^`]*\.(c|h|y|l|am|ac|sh|md|asn1)(:[0-9]+(-[0-9]+)?)?`' \
+    cited=$(grep -oE '`[^`]*/[^`]*\.(c|h|y|l|am|ac|in|inc|sh|pl|md|tex|pdf|txt|out|asn|asn1|ber|der|xer|xbr|per|uper|aper|oer|coer|jer)(:[0-9]+(-[0-9]+)?)?`' \
         "${top_srcdir}/${note}" | tr -d '`' | grep -v '://' | cut -d: -f1 | sort -u)
     for path in ${cited}; do
         [ -e "${top_srcdir}/${path}" ] || missing="${missing}
