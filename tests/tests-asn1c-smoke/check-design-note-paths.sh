@@ -9,14 +9,19 @@ die() {
     exit 1
 }
 
-# The design notes at the top of the tree describe subsystems by citing the
-# sources they live in.  Those citations rot silently: SECURITY_FIX_SUMMARY.md
-# listed skeletons/constr_SEQUENCE_OF_oer.c in its "Remaining Work" checklist
-# even though no such file has ever existed (both OER SEQUENCE OF codecs are
+# The design notes describe subsystems by citing the sources they live in.
+# Those citations rot silently: SECURITY_FIX_SUMMARY.md listed
+# skeletons/constr_SEQUENCE_OF_oer.c in its "Remaining Work" checklist even
+# though no such file has ever existed (both OER SEQUENCE OF codecs are
 # #define aliases onto SET_OF_*_oer -- skeletons/constr_SEQUENCE_OF.h), and it
 # survived until a hand sweep found it (see issue #21).  Every other doc-drift
 # class fixed in this repo has since acquired a guard -- this one covers the
 # design notes.
+#
+# Paths are relative to the top of the tree.  Most of these notes live there,
+# but a note that documents one subsystem may sit beside it instead; a note
+# outside the top level has to be listed in its own directory's EXTRA_DIST for
+# the existence check below to resolve it under `make distcheck`.
 DESIGN_NOTES="
     CANONICAL_UPER_README.md
     ENCODING_CONTROL_STATUS.md
@@ -30,11 +35,12 @@ DESIGN_NOTES="
     PARTIAL_DECODING_FIX.md
     SECURITY_FIX_SUMMARY.md
     XER-OCTET-STRING-base64-plan.md
+    tests/f1ap-regression/JER_OPENTYPE_FIX_TEST.md
 "
 
 for note in ${DESIGN_NOTES}; do
     [ -f "${top_srcdir}/${note}" ] \
-        || die "${top_srcdir}/${note} not found (moved, renamed, or missing from EXTRA_DIST in the top-level Makefile.am?)"
+        || die "${top_srcdir}/${note} not found (moved, renamed, or missing from EXTRA_DIST in the Makefile.am of its directory?)"
 done
 
 # Only directory-qualified citations are checked, and only their existence.

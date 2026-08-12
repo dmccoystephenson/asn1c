@@ -1,4 +1,16 @@
 Changes since v1.5.0:
+	* Extended `tests/tests-asn1c-smoke/check-design-note-paths.sh` past the
+	  top of the tree, adding `tests/f1ap-regression/JER_OPENTYPE_FIX_TEST.md`
+	  to the notes it scans. That note documents the ITU-T X.697 OPEN TYPE
+	  decoder fix and cites `skeletons/OPEN_TYPE_jer.c`, a citation that went
+	  unchecked because the guard's list enumerated only the design notes
+	  sitting at the tree root. No correction was needed — the citation
+	  resolves — and no `EXTRA_DIST` work either, since
+	  `tests/f1ap-regression/Makefile.am` already ships the note so that
+	  `JER_OPENTYPE_FIX_SUMMARY.md`'s citation of it resolves under `make
+	  distcheck`. The two design notes under `docs/` remain uncovered: `docs/`
+	  reaches no tarball at all, so distributing it is a prerequisite and is a
+	  question worth settling on its own terms.
 	* Widened the extension list in
 	  `tests/tests-asn1c-smoke/check-design-note-paths.sh` to cover the
 	  document and encoding-fixture extensions the tree actually uses
