@@ -1,4 +1,29 @@
 Changes since v1.5.0:
+	* Documented the positive `-gen-<RULE>` switches -- `-gen-BER`,
+	  `-gen-XER`, `-gen-JER`, `-gen-CBOR`, `-gen-OER`, `-gen-UPER`,
+	  `-gen-APER`, `-gen-print`, `-gen-random-fill`, `-gen-example` -- and
+	  `-no-gen-autotools`, in `usage()`, `doc/man/asn1c.man.md`,
+	  `doc/man/asn1c.1` and `doc/docsrc/asn1c-usage.tex`. All twelve members
+	  of the family are accepted by `asn1c` (`asn1c/asn1c.c`, cases 'g' and
+	  'n'), yet only `-gen-autotools` was documented anywhere, even though
+	  the man page SYNOPSIS advertises a `-gen-<option>` family and the
+	  compiler's own "-fno-constraints is incompatible with -gen-OER,
+	  -gen-UPER, or -gen-APER" diagnostic names three of the undocumented
+	  members. Each restates a default and so does nothing on its own; they
+	  matter because switches are applied in command line order, which makes
+	  them the only way to undo an earlier `-no-gen-<RULE>` accumulated by a
+	  build system. `tests/tests-asn1c-smoke/check-codec-option-docs.sh` now
+	  guards the whole family across all four surfaces. Its existing
+	  substring searches could not be reused, since `-gen-BER` occurs inside
+	  `-no-gen-BER`; the new check extracts each occurrence together with its
+	  optional `no-` prefix and requires an exact match, and for the same
+	  reason `-gen-autotools` was moved out of the substring loop, its old
+	  check having become satisfiable by the newly added
+	  `-no-gen-autotools`. The `asn1c/asn1c.c` search is narrowed to the
+	  `usage()` help table so the `-fno-constraints` diagnostic cannot stand
+	  in for the three flags it names. `doc/asn1c-usage.pdf` was not
+	  regenerated -- no `xelatex` was available -- so the skew tracked in
+	  issue #7 widens by one table row.
 	* Extended `tests/tests-asn1c-smoke/check-design-note-paths.sh` past the
 	  top of the tree, adding `tests/f1ap-regression/JER_OPENTYPE_FIX_TEST.md`
 	  to the notes it scans. That note documents the ITU-T X.697 OPEN TYPE

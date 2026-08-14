@@ -32,7 +32,7 @@ for flag in \
     "no-gen-OER" \
     "no-gen-UPER" \
     "no-gen-APER" \
-    "gen-autotools" \
+    "no-gen-autotools" \
     ; do
     grep -q -- "-${flag}" "${SRC_MAIN}" \
         || die "asn1c/asn1c.c usage() is missing -${flag}"
@@ -62,6 +62,59 @@ check_roff_flag "no-gen-CBOR" '\-no\-gen\-CBOR'
 check_roff_flag "no-gen-OER" '\-no\-gen\-OER'
 check_roff_flag "no-gen-UPER" '\-no\-gen\-UPER'
 check_roff_flag "no-gen-APER" '\-no\-gen\-APER'
-check_roff_flag "gen-autotools" '\-gen\-autotools'
+check_roff_flag "no-gen-autotools" '\-no\-gen\-autotools'
+
+# Each -no-gen-<RULE> switch above has an inverse -gen-<RULE>, and asn1c accepts
+# all of them (asn1c/asn1c.c, case 'g'), but only -gen-autotools was documented:
+# the rest appeared in none of the four surfaces, even though the man page
+# SYNOPSIS advertises a -gen-<option> family and asn1c's own "-fno-constraints
+# is incompatible with -gen-OER, -gen-UPER, or -gen-APER" diagnostic names three
+# members of it (see issue #27).
+#
+# The substring searches used above cannot be reused here, because "-gen-BER" is
+# a substring of "-no-gen-BER": every positive switch would pass on the strength
+# of its negative twin. Each occurrence is therefore extracted together with its
+# optional "no-" prefix -- leftmost-longest matching claims the whole
+# "-no-gen-BER" when one is present -- and an exact match is then required.
+#
+# asn1c/asn1c.c is narrowed to the usage() help table, whose every entry starts
+# a source line with `"  -`, rather than searched whole: the -fno-constraints
+# diagnostic spells out -gen-OER, -gen-UPER and -gen-APER in its message text,
+# so a whole-file search would report those three as documented even after
+# usage() lost them.
+#
+# doc/man/asn1c.1 has its backslashes stripped before the same extraction runs,
+# which turns pandoc's "\-gen\-random\-fill" back into "-gen-random-fill". That
+# is what lets one spelling of each switch serve all four files, rather than the
+# per-flag roff spellings check_roff_flag needs above.
+USAGE_TEXT=$(grep '^"  -' "${SRC_MAIN}") \
+    || die "asn1c/asn1c.c has no usage() help table (entries starting with '  -')"
+ROFF_TEXT=$(tr -d '\\' < "${DOC_MAN_ROFF}")
+
+check_gen_flag() {
+    rule=$1
+    printf '%s\n' "${USAGE_TEXT}" \
+        | grep -oE -- "-(no-)?gen-${rule}" | grep -qx -- "-gen-${rule}" \
+        || die "asn1c/asn1c.c usage() is missing -gen-${rule}"
+    for doc in "${DOC_MAN_MD}" "${DOC_USAGE_TEX}"; do
+        grep -oE -- "-(no-)?gen-${rule}" "${doc}" | grep -qx -- "-gen-${rule}" \
+            || die "${doc} is missing -gen-${rule}"
+    done
+    printf '%s\n' "${ROFF_TEXT}" \
+        | grep -oE -- "-(no-)?gen-${rule}" | grep -qx -- "-gen-${rule}" \
+        || die "doc/man/asn1c.1 is missing -gen-${rule} (stale generated man page; regenerate with 'make -C doc/man asn1c.1')"
+}
+
+check_gen_flag "BER"
+check_gen_flag "XER"
+check_gen_flag "JER"
+check_gen_flag "CBOR"
+check_gen_flag "OER"
+check_gen_flag "UPER"
+check_gen_flag "APER"
+check_gen_flag "print"
+check_gen_flag "random-fill"
+check_gen_flag "example"
+check_gen_flag "autotools"
 
 exit 0
