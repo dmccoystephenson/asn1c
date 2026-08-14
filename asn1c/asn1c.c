@@ -717,6 +717,12 @@ usage(const char *av0) {
 "  -no-gen-random-fill   Do not generate the random fill code\n"
 "  -no-gen-example       Do not generate the ASN.1 format converter example\n"
 "  -gen-autotools        Generate example top-level configure.ac and Makefile.am\n"
+"  -gen-BER, -gen-XER, -gen-JER, -gen-CBOR, -gen-OER, -gen-UPER, -gen-APER,\n"
+"  -gen-print, -gen-random-fill, -gen-example, -no-gen-autotools\n"
+"                        Inverses of the switches above.  Each one restates\n"
+"                        the default, so they matter only in combination:\n"
+"                        switches are applied in command line order, and a\n"
+"                        later one overrides an earlier one\n"
 "  -pdu={all|auto|Type}  Generate PDU table (discover PDUs automatically)\n"
 "\n"
 
