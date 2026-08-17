@@ -35,3 +35,10 @@ EXTRA_DIST +=                           \
     PARTIAL_DECODING_FIX.md             \
     SECURITY_FIX_SUMMARY.md             \
     XER-OCTET-STRING-base64-plan.md
+
+# The two notes under docs/ are covered by the same guard.  docs/ has no
+# Makefile.am of its own and appears in no SUBDIRS, so they are listed here by
+# path instead, the way .github/copilot-instructions.md above already is.
+EXTRA_DIST +=                           \
+    docs/issue-552-enum-alias-per.md    \
+    docs/pr-539-547-evaluation.md

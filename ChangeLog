@@ -1,4 +1,18 @@
 Changes since v1.5.0:
+	* Completed the reach of
+	  `tests/tests-asn1c-smoke/check-design-note-paths.sh` by adding the two
+	  design notes under `docs/` -- `docs/issue-552-enum-alias-per.md` and
+	  `docs/pr-539-547-evaluation.md` -- to the notes it scans. Between them
+	  one directory-qualified path is cited,
+	  `tests/tests-asn1c-compiler/552-enum-typedef-per-OK.asn1`, and it
+	  resolves, so no doc correction accompanies the change. Distributing the
+	  two notes was the prerequisite: `docs/` has no `Makefile.am` and appears
+	  in no `SUBDIRS`, so it reached no tarball and the guard would have
+	  failed under `make distcheck` on an absent input rather than on real
+	  drift. They are listed in the top-level `EXTRA_DIST` by path, the way
+	  `.github/copilot-instructions.md` already was, rather than by giving
+	  `docs/` a `Makefile.am` of its own. Every design note in the tree is now
+	  covered.
 	* Documented the positive `-gen-<RULE>` switches -- `-gen-BER`,
 	  `-gen-XER`, `-gen-JER`, `-gen-CBOR`, `-gen-OER`, `-gen-UPER`,
 	  `-gen-APER`, `-gen-print`, `-gen-random-fill`, `-gen-example` -- and
