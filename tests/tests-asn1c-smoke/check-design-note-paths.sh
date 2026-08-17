@@ -20,8 +20,10 @@ die() {
 #
 # Paths are relative to the top of the tree.  Most of these notes live there,
 # but a note that documents one subsystem may sit beside it instead; a note
-# outside the top level has to be listed in its own directory's EXTRA_DIST for
-# the existence check below to resolve it under `make distcheck`.
+# outside the top level has to reach the tarball via some EXTRA_DIST for the
+# existence check below to resolve it under `make distcheck` -- its own
+# directory's, where that directory has a Makefile.am (tests/f1ap-regression),
+# or the top-level one by path, where it has none (docs).
 DESIGN_NOTES="
     CANONICAL_UPER_README.md
     ENCODING_CONTROL_STATUS.md
@@ -35,6 +37,8 @@ DESIGN_NOTES="
     PARTIAL_DECODING_FIX.md
     SECURITY_FIX_SUMMARY.md
     XER-OCTET-STRING-base64-plan.md
+    docs/issue-552-enum-alias-per.md
+    docs/pr-539-547-evaluation.md
     tests/f1ap-regression/JER_OPENTYPE_FIX_TEST.md
 "
 
