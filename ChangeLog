@@ -7,11 +7,12 @@ Changes since v1.5.0:
 	  named its predecessor. The bump is normally made by the tagging commit
 	  itself -- `v1.5.0` is literally "Update version in README.md" -- and was
 	  missed for `v1.5.1`. The section now names 1.5.1 and summarizes what it
-	  carried (the OPEN TYPE selector NULL dereference GHSA-rcj5-gcvg-x796,
-	  the BER `CHOICE` indefinite-length end-of-contents infinite loop, CBOR
-	  unknown-field skipping outside the decoder stack limit, APER `INTEGER`
-	  constraint handling, and the fuzzer-discovered JER/XER/APER decoder
-	  defects), keeping the 1.5.0 summary as the preceding release.
+	  carried (the fix for GHSA-rcj5-gcvg-x796, the OPEN TYPE selector NULL
+	  dereference, the BER `CHOICE` indefinite-length end-of-contents
+	  infinite loop, CBOR unknown-field skipping outside the decoder stack
+	  limit, APER `INTEGER` constraint handling, and the fuzzer-discovered
+	  JER/XER/APER decoder defects), keeping the 1.5.0 summary as the
+	  preceding release.
 	  `SECURITY.md` follows: it defers to the README for the name of the
 	  current release, and its supported-versions ceiling of "1.5.0 and
 	  earlier" implied that the unsupported v1.5.1 was still receiving fixes.
