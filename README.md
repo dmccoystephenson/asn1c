@@ -16,16 +16,28 @@ The asn1c is arguably the most evolved open source ASN.1 compiler.
 
 ## Latest release
 
-Current release: **1.5.0**
+Current release: **1.5.1**
 
-This release adds the `-fprefer-import-source` flag, which fixes incorrect type
-binding when two modules export identically-named types and a consumer imports
-one from each. It also includes post-v1.4 fixes across APER/UPER/OER decoding,
-PER size constraint handling, `-fprefix` generation for anonymous typedefs
-and member symbols, parser/compiler warning cleanup, circular-reference
-include fixes, and multiple code-scanning fixes. It also addresses security
-vulnerabilities, including formatting-related code scanning findings and
-hardening of integer decoder edge cases.
+This release is a security and robustness follow-up to 1.5.0. It carries the fix
+for GHSA-rcj5-gcvg-x796, along with fixes for a NULL dereference in the generated
+OPEN TYPE selector code for Information Object Sets whose rows omit the
+constraining key field, an infinite loop in BER `CHOICE` decoding of a malformed
+indefinite-length end-of-contents marker (CWE-835), and CBOR unknown-field
+skipping that escaped the decoder stack limit on recursive arrays, maps, and
+tags. APER `INTEGER` constraint handling is repaired, `-fno-constraints` is now
+rejected in combination with `-gen-OER`, `-gen-UPER`, or `-gen-APER`, and a
+series of fuzzer-discovered decoder defects in JER, XER, and APER are closed.
+These entries are filed under the `Changes since v1.5.0:` heading in the
+[ChangeLog](ChangeLog).
+
+The preceding **1.5.0** release added the `-fprefer-import-source` flag, which
+fixes incorrect type binding when two modules export identically-named types and
+a consumer imports one from each. It also included post-v1.4 fixes across
+APER/UPER/OER decoding, PER size constraint handling, `-fprefix` generation for
+anonymous typedefs and member symbols, parser/compiler warning cleanup,
+circular-reference include fixes, and multiple code-scanning fixes. It also
+addressed security vulnerabilities, including formatting-related code scanning
+findings and hardening of integer decoder edge cases.
 
 ### Upgrade warning: unknown extensions
 

@@ -9,7 +9,7 @@ section always names it) and how this fork tracks upstream.
 | Version | Supported |
 | ------- | --------- |
 | `vlm_master` (branch) | Yes |
-| 1.5.0 and earlier | No |
+| 1.5.1 and earlier | No |
 
 Only the `vlm_master` branch receives security fixes; tagged/released versions
 do not get patch releases. Build from `vlm_master` for the latest fixes.

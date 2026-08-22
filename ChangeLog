@@ -1,4 +1,26 @@
 Changes since v1.5.0:
+	* Corrected the release named by `README.md`'s "Latest release" section,
+	  which still read 1.5.0 after `v1.5.1` was tagged. `v1.5.1` is the newest
+	  tag in `mouse07410/asn1c` and an ancestor of `vlm_master`, and
+	  `configure.ac` derives `ASN1C_VERSION` from `git describe --tags`, so
+	  the compiler already reported a v1.5.1-based version while the README
+	  named its predecessor. The bump is normally made by the tagging commit
+	  itself -- `v1.5.0` is literally "Update version in README.md" -- and was
+	  missed for `v1.5.1`. The section now names 1.5.1 and summarizes what it
+	  carried (the fix for GHSA-rcj5-gcvg-x796, the OPEN TYPE selector NULL
+	  dereference, the BER `CHOICE` indefinite-length end-of-contents
+	  infinite loop, CBOR unknown-field skipping outside the decoder stack
+	  limit, APER `INTEGER` constraint handling, and the fuzzer-discovered
+	  JER/XER/APER decoder defects), keeping the 1.5.0 summary as the
+	  preceding release.
+	  `SECURITY.md` follows: it defers to the README for the name of the
+	  current release, and its supported-versions ceiling of "1.5.0 and
+	  earlier" implied that the unsupported v1.5.1 was still receiving fixes.
+	  No regression guard accompanies the fix, because no in-tree anchor for
+	  "which release is current" exists: the git tag is the only source of
+	  truth, `actions/checkout@v5` fetches no tags in CI, and `make distcheck`
+	  builds from a tarball with no git at all. Guarding this properly is
+	  filed separately.
 	* Completed the reach of
 	  `tests/tests-asn1c-smoke/check-design-note-paths.sh` by adding the two
 	  design notes under `docs/` -- `docs/issue-552-enum-alias-per.md` and
