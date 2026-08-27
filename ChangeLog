@@ -1,4 +1,22 @@
 Changes since v1.5.0:
+	* Removed the dead `L` from the short-option string `asn1c/asn1c.c` hands
+	  to `getopt()`. `-L` was the original spelling of what is now
+	  `-print-lines`, present since the initial revision `f15320bf`
+	  (2004-06-03); `cbf218f7` (2004-08-20) renamed it and deleted its
+	  `case 'L':` label but left the letter in the option string, so for the
+	  22 years since, `getopt()` accepted `-L`, returned `'L'`, and suppressed
+	  its own "invalid option" diagnostic, while the switch dropped the
+	  option to `default: usage()`. `asn1c -L module.asn1` therefore printed
+	  the usage screen with nothing said about which option was rejected,
+	  where `asn1c -Z module.asn1` names `-Z` first. `-L` now takes the same
+	  path as any other unrecognized option. It is documented nowhere -- not
+	  in `usage()`, `doc/man/asn1c.man.md`, `doc/man/asn1c.1` or
+	  `doc/docsrc/asn1c-usage.tex` -- so no documentation follows the change,
+	  and `-print-lines` remains the supported spelling.
+	  `tests/tests-asn1c-smoke/check-getopt-case-labels.sh` guards the class:
+	  it asserts that every letter of the option string has a `case` label in
+	  the switch that consumes it, and that every label has a letter, so
+	  neither an undiagnosable option nor an unreachable label can reappear.
 	* Corrected the release named by `README.md`'s "Latest release" section,
 	  which still read 1.5.0 after `v1.5.1` was tagged. `v1.5.1` is the newest
 	  tag in `mouse07410/asn1c` and an ancestor of `vlm_master`, and

@@ -110,7 +110,7 @@ main(int ac, char **av) {
     /*
      * Process command-line options.
      */
-    while((ch = getopt(ac, av, "D:d:EFf:g:hn:LPp:RS:vW:X")) != -1) switch(ch) {
+    while((ch = getopt(ac, av, "D:d:EFf:g:hn:Pp:RS:vW:X")) != -1) switch(ch) {
         case 'D':
             if(optarg && *optarg) {
                 size_t optarg_len = strlen(optarg);
