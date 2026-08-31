@@ -1,4 +1,22 @@
 Changes since v1.5.0:
+	* Corrected the RFC text that `examples/README` names as the source of the
+	  `sample.source.LDAP3` decoder. Item 4 and the closing `crfc2asn1.pl`
+	  paragraph both cited `rfc4211.txt`, which specifies the Certificate
+	  Request Message Format (CRMF), not LDAP, and which has never existed in
+	  the tree: `8c85f2a1` (2006-09-09), the commit that introduced the LDAP3
+	  example, added `examples/rfc4511.txt` and both wrong citations in the
+	  same change, so the mistake has stood since the example was written.
+	  RFC 4511 is the LDAPv3 protocol specification, `examples/rfc4511.txt` is
+	  the file actually shipped, `examples/Makefile.am` extracts
+	  `rfc4511-Lightweight-Directory-Access-Protocol-V3.asn1` from it, and
+	  `examples/sample.source.LDAP3/README` already named it correctly, so the
+	  top-level `examples/README` was the only place left disagreeing with the
+	  tree. Documentation only -- extraction, build and generated code are
+	  untouched. No regression guard accompanies the fix: the citation is a
+	  bare file name rather than a directory-qualified path, so
+	  `tests/tests-asn1c-smoke/check-design-note-paths.sh` deliberately does
+	  not see it (bare names are its documented false-positive class), and
+	  guarding RFC-text citations is filed separately.
 	* Removed the dead `L` from the short-option string `asn1c/asn1c.c` hands
 	  to `getopt()`. `-L` was the original spelling of what is now
 	  `-print-lines`, present since the initial revision `f15320bf`
