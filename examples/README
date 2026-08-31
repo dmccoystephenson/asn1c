@@ -13,7 +13,7 @@ This directory contains a few examples.
 
 4.  The ./sample.source.LDAP3 directory contains the decoder for
     Lightweight Directory Access Protocol version 3 PDU as specified in
-    rfc4211.txt.
+    rfc4511.txt.
 
 5.  The ./sample.source.RRC directory contains the 3GPP Radio Resource Control
     decoder for RRC version 7.1.0. Just type `make` in there to compile.
@@ -41,7 +41,7 @@ This directory contains a few examples.
 
 The crfc2asn1.pl script can be used to extract ASN.1 data from RFC texts.
 For instance, it is used to extract X.509, MEGACO, and LDAPv3 ASN.1 modules
-from the corresponding RFC texts (rfc3280.txt, rfc3525.txt, rfc4211.txt).
+from the corresponding RFC texts (rfc3280.txt, rfc3525.txt, rfc4511.txt).
 
 To regenerate the .asn1 files from the original RFC texts, execute
 `make clean; make` in the current directory.
