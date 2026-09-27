@@ -1,4 +1,24 @@
 Changes since v1.5.0:
+	* Added `tests/tests-asn1c-smoke/check-example-rfc-citations.sh`, the
+	  regression guard the `examples/README` correction below was filed
+	  without. It asserts that every `rfc<nnnn>.txt` named by
+	  `examples/README`, by each `examples/sample.source.*/README` and by
+	  `examples/Makefile.am` is a file that ships in `examples/`; that every
+	  text a README cites is one of the `ASN1_SOURCE_<n>` inputs
+	  `examples/Makefile.am` actually hands to `crfc2asn1.pl`; and that every
+	  such input is named by `examples/README`, so a citation and the
+	  extraction that drives it cannot disagree from either side. The
+	  `rfc4211.txt` citation that stood from `8c85f2a1` (2006-09-09) until
+	  the correction below would have failed the first two of those.
+	  Resolving against the files on disk rather than cross-checking the
+	  citations against each other is deliberate: both `examples/README`
+	  citations named `rfc4211.txt`, so agreement between them proved
+	  nothing. The check is separate from
+	  `check-design-note-paths.sh` rather than a widening of it, because
+	  that guard ignores bare file names on purpose (a planning note may
+	  name a file that does not exist yet) and RFC texts are a closed class
+	  that carries no such false positive. Test infrastructure only -- no
+	  example, extraction rule or generated code changes.
 	* Corrected the RFC text that `examples/README` names as the source of the
 	  `sample.source.LDAP3` decoder. Item 4 and the closing `crfc2asn1.pl`
 	  paragraph both cited `rfc4211.txt`, which specifies the Certificate
