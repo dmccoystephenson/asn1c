@@ -63,6 +63,7 @@ TESTS += check-src/check-72.-fcompound-names.c
 TESTS += check-src/check-73.c
 TESTS += check-src/check-92.-findirect-choice.c
 TESTS += check-src/check-92.c
+TESTS += check-src/check-157.-gen-UPER.-gen-APER.c
 TESTS += check-src/check-158.-fcompound-names.c
 TESTS += check-src/check-159.c
 TESTS += check-src/check-164.c
