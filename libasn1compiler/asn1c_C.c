@@ -1606,16 +1606,15 @@ asn1c_lang_C_type_CHOICE_def(arg_t *arg) {
 
     /* Create a canonical elements map */
     if(elements && (arg->flags & (A1C_GEN_UPER | A1C_GEN_APER))) {
+        /*
+         * cmap[canonical position] = declaration index, which is the
+         * from_canonical_order direction used by the PER decoders.
+         * The PER encoders index to_canonical_order by declaration index,
+         * so it receives the inverse permutation.
+         */
         cmap = compute_canonical_members_order(arg, elements);
         if(cmap) {
             OUT("static const unsigned asn_MAP_%s_to_canonical_%d[] = {",
-                MKID(expr), expr->_type_unique_index);
-            for(int i = 0; i < elements; i++) {
-                if(i) OUT(",");
-                OUT(" %d", cmap[i]);
-            }
-            OUT(" };\n");
-            OUT("static const unsigned asn_MAP_%s_from_canonical_%d[] = {",
                 MKID(expr), expr->_type_unique_index);
             for(int i = 0; i < elements; i++) {
                 if(i) OUT(",");
@@ -1627,6 +1626,13 @@ asn1c_lang_C_type_CHOICE_def(arg_t *arg) {
                     }
                 }
                 assert(j < elements);
+            }
+            OUT(" };\n");
+            OUT("static const unsigned asn_MAP_%s_from_canonical_%d[] = {",
+                MKID(expr), expr->_type_unique_index);
+            for(int i = 0; i < elements; i++) {
+                if(i) OUT(",");
+                OUT(" %d", cmap[i]);
             }
             OUT(" };\n");
             free(cmap);
