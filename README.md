@@ -2,10 +2,10 @@
 
 ## About
 
-ASN.1 to C compiler takes the ASN.1 module files (example) and generates
-the C++ compatible C source code. That code can be used to serialize
-the native C structures into compact and unambiguous BER/OER/PER/XER/JER-based
-data files, and deserialize the files back.
+asn1c compiles ASN.1 modules into C++-compatible C source by default. Its
+opt-in `--rust` backend generates Rust source and Cargo metadata for the
+supported subset. Generated code can serialize native values into compact
+BER-family, OER, PER, XER, JER, and CBOR data, and decode them where supported.
 
 Various ASN.1 based formats are widely used in the industry,
 such as to encode the X.509 certificates employed in the HTTPS handshake,
@@ -71,7 +71,7 @@ Encoding       | API function               | Understood by | API function
 -------------- | -------------------------- | ------------- | -------------
 BER            | der_encode()               | BER           | ber_decode()
 DER            | der_encode()               | DER, BER      | ber_decode()
-CER            | _not supported_            | CER, BER      | ber_decode()
+CER            | cer_encode()               | BER-family input | ber_decode()
 BASIC-OER      | oer_encode()               | *-OER         | oer_decode()
 CANONICAL-OER  | oer_encode()               | *-OER         | oer_decode()
 BASIC-UPER     | uper_encode()              | *-UPER        | uper_decode()
@@ -87,6 +87,36 @@ CBOR           | cbor_encode()              | CBOR          | cbor_decode()
 *) Asterisk means both BASIC and CANONICAL variants. JER-MINIFIED produces
 whitespace-free JSON, and `jer_decode()` accepts either JER form.
 </details>
+
+CER encoding is available through `cer_encode()`, `asn_encode(ATS_CER, ...)`,
+and the generated converter's `-ocer` output selector. The default C target
+generates CER support together with BER support; `-gen-CER` enables its
+BER-family dependencies, `-no-gen-CER` omits CER encoding, and `-no-gen-BER`
+omits the shared family. CER decoding remains BER-backed:
+`asn_decode(ATS_CER, ...)` and the
+converter's `-icer` input selector accept BER-family input without validating
+that it satisfies CER canonical restrictions. As with the other generated
+codecs, availability depends on the generated descriptor kinds and canonical
+value forms handled by the encoder. `ASN_DISABLE_CER_SUPPORT` disables CER
+encoding at build time while preserving BER-backed CER input. See the
+[binary codec support audit](docs/binary-codec-support.md) for the current
+descriptor, value, and resource boundaries.
+
+Constructed CER character strings retain their outer string tag and use
+universal OCTET STRING tags for the fragments; BIT STRING fragments use their
+universal BIT STRING tag. BER input also preserves legacy opaque `ANY`
+containers under the bounds described in that audit.
+
+In Rust output mode, the current CER encoder supports top-level BOOLEAN, NULL,
+and finite, nonextensible INTEGER values whose bounds fit signed 64-bit
+integers. Rust CER output is selected by default with UPER; `-no-gen-UPER`
+selects CER-only output. Rust CER decoding is not implemented. See
+[Rust output usage and limits](docs/rust/implementation.md).
+
+Basic/canonical OER, UPER, and APER selectors share each family's decoder;
+CBOR has its own encoder and decoder. Support still depends on the generated
+type's codec operations and enabled codec families. See the
+[binary codec audit](docs/binary-codec-support.md) for dispatch details and limits.
 
 ## XER and JER Encoding Instructions
 
@@ -127,6 +157,17 @@ for a short installation guide.
 [![Build Status](https://travis-ci.com/mouse07410/asn1c.svg?branch=vlm_master)](https://travis-ci.com/mouse07410/asn1c)
 
 ## Documentation
+
+`--rust` selects native Rust output as a complete compiler mode. The current
+implementation generates a standalone Cargo package with safe, dependency-free
+UPER encode/decode and CER encoding for BOOLEAN, NULL, and finite nonextensible
+INTEGER ranges fitting `i64`. Unsupported schemas, codec requests, and C-specific
+output options fail with diagnostics. Build the generated package with Cargo
+in offline mode.
+
+See [the initial implementation](docs/rust/implementation.md) for usage and
+limits, and [the conversion plan](docs/rust/README.md) for incremental delivery
+of all current codec families and test migration.
 
 For the list of asn1c command line options, see `asn1c -h` or `man asn1c`.
 

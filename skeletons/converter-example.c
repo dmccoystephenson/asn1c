@@ -154,7 +154,11 @@ typedef struct {
 
 static syntax_selector input_encodings[] = {
     {"ber", ATS_BER, CODEC_OFFSET(ber_decoder),
-     "Input is in BER (Basic Encoding Rules) or DER"},
+     "Input is in BER, DER, or CER (BER-compatible decoding)"},
+    {"der", ATS_DER, CODEC_OFFSET(ber_decoder),
+     "Input is in DER (BER-compatible decoding, no canonical validation)"},
+    {"cer", ATS_CER, CODEC_OFFSET(ber_decoder),
+     "Input is in CER (BER-compatible decoding, no canonical validation)"},
     {"oer", ATS_BASIC_OER, CODEC_OFFSET(oer_decoder),
      "Input is in OER (Octet Encoding Rules)"},
     {"per", ATS_UNALIGNED_BASIC_PER, CODEC_OFFSET(uper_decoder),
@@ -174,6 +178,10 @@ static syntax_selector input_encodings[] = {
 static syntax_selector output_encodings[] = {
     {"der", ATS_DER, CODEC_OFFSET(der_encoder),
      "Output as DER (Distinguished Encoding Rules)"},
+#if !defined(ASN_DISABLE_CER_SUPPORT) && !defined(ASN_DISABLE_BER_SUPPORT)
+    {"cer", ATS_CER, CODEC_OFFSET(der_encoder),
+     "Output as CER (Canonical Encoding Rules)"},
+#endif
     {"oer", ATS_CANONICAL_OER, CODEC_OFFSET(oer_encoder),
      "Output as Canonical OER (Octet Encoding Rules)"},
     {"per", ATS_UNALIGNED_CANONICAL_PER, CODEC_OFFSET(uper_encoder),
@@ -494,7 +502,8 @@ main(int ac, char *av[]) {
 #ifdef  JUNKTEST
             if(isyntax == ATS_RANDOM) {
                 structure = NULL;
-                if(asn_random_fill(pduType, &structure, random_max_size) != 0) {
+                if(asn_random_fill_with_syntax(pduType, &structure,
+                                               random_max_size, osyntax) != 0) {
                     fprintf(stderr, "Cannot generate a random value.\n");
                     assert(structure == NULL);
                     errno = EINVAL;
@@ -520,7 +529,8 @@ main(int ac, char *av[]) {
             if(opt_check) {
                 char errbuf[128];
                 size_t errlen = sizeof(errbuf);
-                if(asn_check_constraints(pduType, structure, errbuf, &errlen)) {
+                if(asn_check_constraints_with_syntax(pduType, structure,
+                                                     isyntax, errbuf, &errlen)) {
                     fprintf(stderr,
                             "%s: ASN.1 constraint "
                             "check failed: %s\n",
@@ -657,7 +667,10 @@ restartability_supported(enum asn_transfer_syntax syntax) {
 }
 
 static void *
-data_decode_from_file(enum asn_transfer_syntax isyntax, asn_TYPE_descriptor_t *pduType, FILE *file, const char *name, ssize_t suggested_bufsize, int on_first_pdu) {
+data_decode_from_file(enum asn_transfer_syntax isyntax,
+                      asn_TYPE_descriptor_t *pduType, FILE *file,
+                      const char *name, ssize_t suggested_bufsize,
+                      int on_first_pdu) {
     static uint8_t *fbuf;
     static ssize_t fbuf_size;
     static asn_codec_ctx_t s_codec_ctx;
@@ -1013,4 +1026,3 @@ junk_bytes_with_probability(uint8_t *buf, size_t size, double prob) {
     }
 }
 #endif    /* JUNKTEST */
-
