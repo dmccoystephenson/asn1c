@@ -1,6 +1,6 @@
 # ADR: Generate Rust codecs while retaining the C frontend
 
-**Status:** Proposed architecture; scope confirmed by the user.
+**Status:** Accepted conversion direction; initial UPER and CER encoding slices implemented.
 **Date:** 2026-10-11.
 **Deciders:** Repository maintainer; Sol supervises Luna implementation agents.
 **Baseline:** `5a0ccf24ede9b176e8fd76861bf4855ed95f5105`.
@@ -31,10 +31,12 @@ every type, direction, or canonical variant is implemented. For example,
 [CI](../../.github/workflows/c-cpp.yml) explicitly limits PKIX JER testing to
 encoding because of ANY open types.
 
-The header's `ATS_CER` comment says decoding is supported, but
-[asn_decode](../../skeletons/asn_application.c) rejects that selector with
-`ENOENT`. Record this discrepancy and preserve the unsupported-selector
-diagnostic; it does not establish a dedicated CER decoder to port.
+The C [BER decoder](../../skeletons/ber_decoder.h) accepts CER-compatible
+input, and `ATS_CER` uses that decoder without strict canonical-form checks.
+The C runtime now also provides a descriptor-driven CER encoder. Rust adds an
+initial encode-only CER slice for BOOLEAN, NULL, and bounded nonextensible
+INTEGER values fitting `i64`; it does not add a CER decoder. See the
+[binary audit](../binary-codec-support.md).
 
 ## Decision
 
@@ -44,9 +46,12 @@ and encoding-control interpretation. Keep backend emission and output packaging
 separate. Extract small language-neutral semantic helpers where existing helpers
 combine semantic analysis with C emission; do not make Rust parse generated C.
 
-Create a native Rust runtime at the proposed path `rust/asn1c-runtime/`. It
-implements the behavior of `skeletons/` without calling C codecs. Keep the C
-runtime as the compatibility baseline and differential test participant.
+Create a native Rust runtime at `rust/asn1c-runtime/`. The initial UPER
+primitive implementation and encode-only CER support for BOOLEAN, NULL, and
+bounded nonextensible `i64` INTEGER values are present; remaining coverage is a
+conversion target. It implements codec behavior without calling C codecs.
+Keep the C runtime as the compatibility baseline and differential test
+participant.
 Generated Rust should use typed structs/enums, checked semantic metadata, and
 small codec traits or typed helpers. It should not copy raw C descriptor offsets,
 `void *` operations, pointer sentinels, or mutable global inheritance tables.
@@ -66,17 +71,20 @@ review any bigint, XML, JSON, or CBOR dependency before adding it.
 
 ## Generated output and compiler behavior
 
-The proposed selector is `-lang=rust`, with `-lang=c` and C as the unchanged
-default. This spelling is not implemented by this documentation. The existing
-`getopt` layout permits a new `l:` case that validates `ang=rust` or `ang=c`, in
-the style of current `-gen-*` spellings. Document and test invalid selectors.
+The user selected `--rust` as a major top-level flag. It switches the complete
+generation path: Rust types, codec implementations, runtime assets, naming,
+output writer, and Cargo build metadata. C remains the default without this
+flag. Reject incompatible C-only output/layout modes rather than applying them
+to Rust output. Preserve shared ASN.1 parsing and semantic processing.
 
 Use existing `-gen-*`/`-no-gen-*` syntax for codec selection. Track explicit
-selection separately from legacy default flags. During incremental development,
-require an explicit supported codec selection for Rust; never silently drop an
-unsupported requested codec. Once qualified, the Rust default may enable all
-qualified families. Diagnose C-only options rather than ignoring them, and
-preserve `-E`, `-EF`, and C generation behavior.
+selection separately from legacy default flags. `--rust` currently defaults to
+UPER and CER encoding and reports its support boundary. `-no-gen-UPER` permits
+CER-only output. Explicitly requested unsupported codecs or schema features
+are errors; never silently drop them.
+As families are qualified, add them to the Rust default until all current
+families are supported. Shared frontend inspection remains available in C mode;
+incompatible inspection/output combinations with `--rust` receive diagnostics.
 
 By default, generate a self-contained Cargo project with a copied runtime source
 crate under `runtime/` and a local path dependency. Include only required sources

@@ -2,8 +2,11 @@
 
 Status: planning document for baseline
 `5a0ccf24ede9b176e8fd76861bf4855ed95f5105` (2026-10-11). The Rust runtime
-and test targets do not exist at this baseline. Future Rust commands below are
-acceptance targets, not commands verified today.
+and test targets did not exist at that baseline. The initial primitive UPER
+and CER implementation now has runtime unit tests and a
+[generated-code integration harness](../../tests/tests-rust-compiler/README.md).
+Commands and coverage for additional codec families below remain acceptance
+targets. See the [first implementation](implementation.md) for current limits.
 
 ## Scope and ownership
 
@@ -17,7 +20,7 @@ Runtime unit tests own codec algorithms, primitive operations, constraints,
 error handling, and resource limits. Test resumable input only for APIs that
 currently support it or for a separately approved Rust interface. The generated
 Rust harness owns schema-to-codegen-to-runtime behavior. Reuse schemas and
-vectors and invoke the proposed `-lang=rust` backend when it exists.
+vectors and invoke the `--rust` backend within its supported subset.
 
 Keep the C implementation as the comparison implementation throughout the
 migration. It is not the protocol oracle. Treat any C/Rust disagreement as a
@@ -47,6 +50,9 @@ standalone/manual runners.
 
 The randomized C driver covers BER, DER, canonical OER, basic PER, canonical
 UPER, canonical APER, canonical XER, and JER. CBOR is absent from that driver.
+When CER encoding is enabled, successfully decoded BER-family corpus values also
+feed the generic `ATS_CER` encoder. This exercises encoding over corpus inputs;
+it is not a long fuzz campaign and does not make CER input decoding canonical.
 Separate CBOR tests live in `tests/tests-skeletons/check-CBOR.c`,
 `tests/tests-c-compiler/check-src/check-202.-gen-CBOR.c`, and the PKIX job in
 `.github/workflows/c-cpp.yml`. Track CBOR as the repository's ASN.1-to-CBOR
@@ -61,11 +67,15 @@ canonical XER, JER, minified JER, and CBOR. Qualify each type/direction cell
 against actual descriptor operations and enabled features; a syntax enum or
 codec source file alone does not establish support.
 
-There is a specific CER discrepancy to preserve. `ATS_CER` is described in
-`asn_application.h` as decode-only, but the generic `asn_decode` switch in
-`asn_application.c` rejects it with `ENOENT`. Record the C decode cell as
-unsupported and add a dispatch regression for that result. Do not implement a
-CER decoder as part of this migration.
+The binary-dispatch regression routes `ATS_CER` input to the existing BER
+decoder. CER-compatible input decoding remains permissive; test valid
+indefinite/segmented encodings, incomplete and malformed input, and the shared
+BER decoder's input behavior. C CER encoding now has a separate native
+descriptor walker. Its tests cover canonical string fragments and ordering for
+`SET` and `SET OF`; decoder selector acceptance still does not establish strict
+canonical validation. Rust currently implements CER encoding only for
+BOOLEAN, NULL, and bounded nonextensible INTEGER values fitting `i64`, with no
+CER decoder. See [the binary audit](../binary-codec-support.md).
 
 CI runs GCC `make check`, `make distcheck`, and Clang sanitizer `make check`.
 Each configures with `--disable-test-fuzzer`. Normal CI therefore runs randomized
@@ -95,10 +105,16 @@ temporary directories below `tests/tests-randomized`.
 
 ## Coverage ledger
 
-Create a machine-readable ledger at
-`tests/tests-rust-compiler/coverage.tsv` before the first runtime port. Use one
-row for each applicable schema, ASN.1 feature, codec variant, direction, and
-policy cell. Include these fields:
+The current primitive slice is recorded in
+[`tests/tests-rust-compiler/coverage.json`](../../tests/tests-rust-compiler/coverage.json).
+It covers the qualified UPER BOOLEAN/NULL/INTEGER cases, encode-only CER
+primitive vectors, codec-selection boundaries, and compiler/output safety
+checks. It is not a stage-wide map of the existing C runtime.
+
+Before expanding beyond this first slice, materialize the planned stage-wide
+mapping at `tests/tests-rust-compiler/coverage.tsv`. Use one row for each
+applicable schema, ASN.1 feature, codec variant, direction, and policy cell.
+Include these fields:
 
 ```text
 schema | test_id | c_source | rust_counterpart | type | asn1_feature
@@ -371,9 +387,12 @@ and no earlier coverage is lost.
    tags, defaults, open types, IOC, and CONTAINING. Prioritize 126, 548, 550,
    552, 561, 563, and 569 plus the APER skeleton tests. Include malformed
    metadata and strict/permissive extension policies.
-4. **M4: BER/DER and OER.** Add BER decode/DER encode behavior, lengths, tags,
-   ordering, OER variants, extensions, open types, nested collection limits,
-   and issues 570/575. Test decode success separately from constraint failure.
+4. **M4: BER/DER/CER and OER.** Add BER decode and CER-compatible input,
+   DER/CER encoding, lengths, tags, ordering, OER variants, extensions, open
+   types, nested collection limits, and issues 570/575. Map the complete
+   C-supported CER encoder domain to Rust or reviewed exclusions. Test decode
+   success separately from constraint failure and keep BER permissiveness
+   distinct from strict canonical validation.
 5. **M5: XER, JER, and CBOR.** Add basic/canonical XER, JER and minified JER,
    strict malformed-object policy, base64, and the complete CBOR support matrix.
    Do not imply JER decode for PKIX open types where C lacks it.
