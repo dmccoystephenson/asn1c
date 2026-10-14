@@ -4,8 +4,10 @@ Date: 2026-10-11
 
 Baseline: commit 5a0ccf24ede9b176e8fd76861bf4855ed95f5105.
 
-Status: proposal for the Rust runtime and generated Rust codec boundary. This
-document describes a target and does not claim that Rust runtime code exists.
+Status: architecture target with an implemented first runtime slice in
+[rust/asn1c-runtime](../../rust/asn1c-runtime/README.md). That slice supports
+UPER BOOLEAN, NULL, and bounded i64 INTEGER operations. The generic runtime
+shape and remaining codec families described below are conversion targets.
 
 ## Accepted target constraints
 
@@ -104,19 +106,22 @@ instead of inferring complete coverage from a family-level filename.
 | Codec family | Current modes | Main C source anchors |
 | --- | --- | --- |
 | BER / DER | BER decode; DER encode | ber_decoder.c, der_encoder.c |
-| CER | No decoder; selector returns ENOENT | asn_application.c |
+| CER | Strict C decode and encode; Rust strict primitive encode/decode slice | cer_decoder.c, cer_encoder.c |
 | PER | UPER / APER, each basic and canonical | per_*.c, uper_*.c, aper_*.c |
 | OER | Basic and canonical | oer_*.c |
 | XER | Basic and canonical | xer_*.c |
 | JER | Regular and minified | jer_*.c |
 | CBOR | CBOR | cbor_*.c |
 
-CER is a header/dispatch discrepancy. The ATS_CER comment says decode is
-supported, but asn_decode handles ATS_CER by returning ENOENT
-(skeletons/asn_application.c:503-516). README.md also lists CER as
-unsupported. Therefore CER has no verified C operation to port; test the
-existing unsupported-selector diagnostic and leave CER outside the parity
-matrix.
+The dispatcher routes `ATS_CER` input to strict `cer_decode`, which decodes
+with `ber_decode`, re-encodes with the descriptor-driven CER encoder, and
+rejects input that is not byte-identical to the canonical encoding. `ATS_BER`
+and `ATS_DER` input remain permissive. The current Rust runtime implements CER
+encoding and strict decoding only for BOOLEAN, NULL, and finite nonextensible
+INTEGER ranges that fit `i64` (`decode_boolean_cer`, `decode_null_cer`,
+`decode_integer_cer`). These accept only the exact universal tag, a short-form
+definite length, and canonical content, and enforce `Limits`.
+See [the binary audit](../binary-codec-support.md).
 
 The C encoder already exposes a byte callback, while decoder entry points accept
 input slices and return RC_OK, RC_WMORE, or RC_FAIL. Its codec context limits
@@ -229,7 +234,8 @@ the runtime buildable and should add its tests and support matrix entries.
 3. APER plus constructed and recursive types, including optional/default
    members, CHOICE, SET, OF collections, extensions, open types, and limits.
 4. Remaining BER/DER and OER families, including the supported BER behavior
-   and the CER unsupported-selector diagnostic.
+   and permissive BER decoding; expand the existing C and Rust CER codec
+   matrices before making wider claims.
 5. XER, JER, and CBOR. These may proceed in parallel after shared value,
    descriptor, error, and I/O interfaces stabilize.
 6. Parity qualification: close the type/syntax/direction matrix and qualify

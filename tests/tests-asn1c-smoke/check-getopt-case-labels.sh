@@ -22,21 +22,29 @@ die() {
 # where every other unrecognized flag says which one was rejected (see issue
 # #31).  A label with no letter is the mirror-image defect: unreachable code.
 #
-# Only the option-parsing switch is scanned, delimited by the getopt() call and
-# its own default: label, so a case label belonging to some other switch in the
-# file is not mistaken for an option.
-SWITCH=$(sed -n '/getopt(ac, av, "/,/^[[:space:]]*default:/p' "${SRC_MAIN}")
+# Only the option-parsing switches are scanned.  getopt() is called from
+# asn1c_parse_options(), which hands each letter to asn1c_handle_option(); that
+# switch dispatches the f, g/n, p/P and W families and passes every other letter
+# through its "default: return asn1c_handle_basic_option(...)" to the switch in
+# asn1c_handle_basic_option(), whose bare "default:" falls back to usage().  The
+# two switches sit directly below the getopt() call, so the range runs from that
+# call to the first bare "default:" line -- the dispatcher's own default: has
+# code after it on the same line and does not end the range.  A case label
+# belonging to some other switch further down the file is not mistaken for an
+# option.
+SWITCH=$(sed -n '/getopt(\*argc, argv, "/,/^[[:space:]]*default:[[:space:]]*$/p' "${SRC_MAIN}")
 
 OPTSTRING=$(printf '%s\n' "${SWITCH}" \
-    | sed -n 's/.*getopt(ac, av, "\([^"]*\)").*/\1/p')
+    | sed -n 's/.*getopt(\*argc, argv, "\([^"]*\)").*/\1/p')
 [ -n "${OPTSTRING}" ] \
-    || die "no getopt(ac, av, \"...\") call found in ${SRC_MAIN} (rewritten option parsing? this check needs updating)"
+    || die "no getopt(*argc, argv, \"...\") call found in ${SRC_MAIN} (rewritten option parsing? this check needs updating)"
 
 # An unterminated sed range runs to end of file, which would sweep in case
-# labels from any switch below.  There is no default: label to close it only if
-# the option switch has been restructured, in which case this check is stale.
-printf '%s\n' "${SWITCH}" | grep -q '^[[:space:]]*default:' \
-    || die "the option-parsing switch in ${SRC_MAIN} has no default: label to delimit it (restructured option parsing? this check needs updating)"
+# labels from any switch below.  There is no bare default: line to close it only
+# if the option switches have been restructured, in which case this check is
+# stale.
+printf '%s\n' "${SWITCH}" | grep -q '^[[:space:]]*default:[[:space:]]*$' \
+    || die "the option-parsing switches in ${SRC_MAIN} have no bare default: label to delimit them (restructured option parsing? this check needs updating)"
 
 # ':' marks the preceding letter as taking an argument and is not an option
 # itself.  The remaining letters are split one per line for comparison, the

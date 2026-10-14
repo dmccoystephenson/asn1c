@@ -154,7 +154,11 @@ typedef struct {
 
 static syntax_selector input_encodings[] = {
     {"ber", ATS_BER, CODEC_OFFSET(ber_decoder),
-     "Input is in BER (Basic Encoding Rules) or DER"},
+     "Input is in BER, DER, or CER (BER-compatible decoding)"},
+    {"der", ATS_DER, CODEC_OFFSET(ber_decoder),
+     "Input is in DER (BER-compatible decoding, no canonical validation)"},
+    {"cer", ATS_CER, CODEC_OFFSET(ber_decoder),
+     "Input is in CER (strict: noncanonical encodings are rejected)"},
     {"oer", ATS_BASIC_OER, CODEC_OFFSET(oer_decoder),
      "Input is in OER (Octet Encoding Rules)"},
     {"per", ATS_UNALIGNED_BASIC_PER, CODEC_OFFSET(uper_decoder),
@@ -174,6 +178,10 @@ static syntax_selector input_encodings[] = {
 static syntax_selector output_encodings[] = {
     {"der", ATS_DER, CODEC_OFFSET(der_encoder),
      "Output as DER (Distinguished Encoding Rules)"},
+#if !defined(ASN_DISABLE_CER_SUPPORT) && !defined(ASN_DISABLE_BER_SUPPORT)
+    {"cer", ATS_CER, CODEC_OFFSET(der_encoder),
+     "Output as CER (Canonical Encoding Rules)"},
+#endif
     {"oer", ATS_CANONICAL_OER, CODEC_OFFSET(oer_encoder),
      "Output as Canonical OER (Octet Encoding Rules)"},
     {"per", ATS_UNALIGNED_CANONICAL_PER, CODEC_OFFSET(uper_encoder),
@@ -655,11 +663,15 @@ is_syntax_PER(enum asn_transfer_syntax syntax) {
 
 static int
 restartability_supported(enum asn_transfer_syntax syntax) {
-    return !is_syntax_PER(syntax);
+    /* Strict CER validates a complete value, so it restarts from scratch. */
+    return !is_syntax_PER(syntax) && syntax != ATS_CER;
 }
 
 static void *
-data_decode_from_file(enum asn_transfer_syntax isyntax, asn_TYPE_descriptor_t *pduType, FILE *file, const char *name, ssize_t suggested_bufsize, int on_first_pdu) {
+data_decode_from_file(enum asn_transfer_syntax isyntax,
+                      asn_TYPE_descriptor_t *pduType, FILE *file,
+                      const char *name, ssize_t suggested_bufsize,
+                      int on_first_pdu) {
     static uint8_t *fbuf;
     static ssize_t fbuf_size;
     static asn_codec_ctx_t s_codec_ctx;

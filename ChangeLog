@@ -1,8 +1,63 @@
 Changes since v1.5.3:
+	* Restored -gen-autotools, which the option-parsing rewrite for --rust
+	  rejected as an invalid argument, leaving the example top-level
+	  configure.ac and Makefile.am impossible to generate. Under --rust it
+	  is refused like other codecs Rust does not support. Added the
+	  check-gen-autotools.sh smoke test.
+	* Added a strict C CER decoder, cer_decode(), which runs ber_decode(),
+	  re-encodes the value with cer_encode(), and rejects input (EBADF) that
+	  is not byte-identical to the consumed TLV. asn_decode(ATS_CER) and the
+	  generated converter's -icer now use it; ATS_BER and ATS_DER remain
+	  permissive. -icer requires CER generation, is rejected under
+	  -no-gen-CER, and buffers the whole input. ASN_DISABLE_BER_SUPPORT or
+	  ASN_DISABLE_CER_SUPPORT builds a stub failing with ENOENT. The Rust
+	  runtime adds strict decode_boolean_cer, decode_null_cer, and
+	  decode_integer_cer, and generated Rust types emit decode_cer alongside
+	  encode_cer whenever CER is selected. Added skeleton, smoke, and Rust
+	  runtime/interop regressions, including live C-generated CER vectors.
+	* Skip unused randomized corpus generation when LibFuzzer is disabled.
+	  Added GENERATE_CORPUS=auto/yes/no and a local-only check-corpus target
+	  that splits bundles into parallel cases without timed fuzzing. Inner
+	  builds share the caller's job budget. Corpus/fuzz success markers are
+	  separate, and policy/failure regressions run in the ordinary checks.
+	* Corrected CER restricted-character-string fragments to use universal
+	  OCTET STRING tags, preserving the outer string type tag. BER decoding
+	  no longer accepts a character-type tag in a nested OCTET STRING-only
+	  fragment position. Restored legacy opaque ANY container compatibility
+	  without removing parent-length, nesting, or EOC validation. Added fixed
+	  byte-vector and malformed/streaming regressions for generated C tests
+	  25, 60, and 62; randomized corruption coverage is retained.
+	  All 71 generated C checks and 52 linked skeleton checks pass, along
+	  with CER codec-disable variants and Rust/C interoperability checks.
+	* Added --rust as a complete output mode with native safe Rust UPER
+	  encode/decode and CER encoding for BOOLEAN, NULL, and finite
+	  nonextensible INTEGER ranges fitting i64. Generated Cargo packages use
+	  a dependency-free Rust runtime. Rust CER is encode-only; other Rust
+	  codecs and ASN.1 type families remain incremental conversion work.
+	* Added a native descriptor-driven C CER encoder, exposed through
+	  cer_encode(), the generic ATS_CER encoder, and generated converter
+	  output. C CER support is enabled by default with BER dependencies. CER
+	  input still uses permissive BER decoding. Added string fragmentation,
+	  constructed values, SET/SET OF ordering, malformed-input, and converter
+	  regression coverage. Primitive content capture uses a single intrinsic tag;
+	  the descriptor walker reapplies wrappers under the configurable tag-chain
+	  limit. Existing BER corpora also feed decoded values to generic CER encoding
+	  in randomized tests; this is not a long fuzz run.
+	* Extended BER-family CER input handling for explicit/named wrappers,
+	  natural-tag string fragments, and definite constructed BER children for
+	  covered tagged scalar forms. Validated NativeInteger width/sign metadata
+	  while preserving default native storage and DEFAULT omission. Mixed lengths
+	  among nested constructed scalar wrappers remain limited by the existing
+	  BER tag-chain path. The corrected encoder passes the linked skeleton suite
+	  (52/52), and the Rust harness passes all 10 conformance checks with C parity.
+	  A short ASan/UBSan run passes 660,325 mutations. The generated CER converter
+	  script, all 28 generated smoke tests, and installed-toolchain qualification
+	  pass.
 	* Documented the proposed first stage of Rust conversion: an opt-in Rust
 	  generation backend, a safe Rust runtime for all current codec families,
 	  test migration, and supervised implementation milestones. This change
-	  adds planning documentation only; Rust generation is not implemented.
+	  initially added planning documentation; the first implementation is
+	  described above.
 	* Fixed an assertion when parsing nested constrained SEQUENCE OF and SET OF
 	  types. Element constraints now pass through nested collections while SIZE
 	  constraints remain attached to their collections. Added issue #575 coverage.
