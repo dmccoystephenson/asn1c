@@ -334,8 +334,6 @@ asn1c_handle_codec_option(int ch, const char *optarg,
     size_t prefix_length = strlen(prefix);
     uint64_t flag;
     if(strncmp(optarg, prefix, prefix_length)) goto invalid;
-    if(ch == 'g' && !strcmp(optarg + prefix_length, "autotools"))
-        goto invalid;
     flag = asn1c_codec_flag(optarg + prefix_length);
     if(!flag) goto invalid;
     if(ch == 'g') {

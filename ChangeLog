@@ -1,4 +1,9 @@
 Changes since v1.5.3:
+	* Restored -gen-autotools, which the option-parsing rewrite for --rust
+	  rejected as an invalid argument, leaving the example top-level
+	  configure.ac and Makefile.am impossible to generate. Under --rust it
+	  is refused like other codecs Rust does not support. Added the
+	  check-gen-autotools.sh smoke test.
 	* Added a strict C CER decoder, cer_decode(), which runs ber_decode(),
 	  re-encodes the value with cer_encode(), and rejects input (EBADF) that
 	  is not byte-identical to the consumed TLV. asn_decode(ATS_CER) and the
