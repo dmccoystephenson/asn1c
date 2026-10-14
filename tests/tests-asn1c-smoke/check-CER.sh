@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Verify generated descriptor semantics and converter CER codec selection.
 # Source: new asn1c regression, independently derived X.690 sections 9/11 bytes.
-# Version/date: 2026-10-11. Responsible: asn1c maintainers.
+# Version/date: 2026-10-13. Responsible: asn1c maintainers.
 # Inputs: top_builddir/top_srcdir, CC, MAKE from the Automake environment.
 # Returns/errors: zero when all comparisons pass; build/codec failures are fatal.
-# History: initial native CER encoder integration. No external dependencies.
+# History: initial native CER encoder integration; 2026-10-13 locale-safe byte fixture.
 # Example: make check TESTS=check-CER.sh
 set -eu
 
@@ -50,7 +50,7 @@ END
 ASN1
 
 # Build real generated descriptors, with only the codecs used by this test.
-mkdir -p "$test_directory/enabled" "$test_directory/disabled" "$test_directory/no-ber"
+mkdir -p "$test_directory/enabled" "$test_directory/disabled" "$test_directory/no-ber" "$test_directory/strict"
 "$test_build_root/asn1c/asn1c" -S "$test_source_root/skeletons" \
     -D "$test_directory/enabled" -pdu=all -gen-CER \
     -no-gen-UPER -no-gen-APER -no-gen-OER -no-gen-JER -no-gen-CBOR \
@@ -173,7 +173,9 @@ cmp "$test_directory/bmp-long.expected" "$test_directory/bmp-long.actual"
 awk 'BEGIN { printf "<RetagBits>"; for (i=0; i<8000; i++) printf "1"; print "</RetagBits>" }' \
     > "$test_directory/rbits-long.xml"
 { printf '\044\200\003\202\003\350\000';
-  awk 'BEGIN { for (i=0; i<999; i++) printf "%c", 255 }';
+  # An explicit octal escape keeps payload octets independent of awk's locale.
+  # The loop index is a state variable counting the first fragment's 999 bytes.
+  for ((i=0; i<999; i++)); do printf '\377'; done
   printf '\003\002\000\377\000\000'; } > "$test_directory/rbits-long.expected"
 "$test_directory/enabled/converter-example" -p RetagBits -ixer -ocer \
     "$test_directory/rbits-long.xml" > "$test_directory/rbits-long.actual"
@@ -287,16 +289,47 @@ for decode_case in choice mixed triple tagged tagged-long bag tchoice nchoice de
     cmp "$test_directory/$decode_case.expected" "$test_directory/$decode_case.reencoded"
 done
 
-# Disabling the encoder retains CER-compatible input decoding through BER.
+# Strict CER decoding accepts canonical input and rejects BER-only spellings.
 printf 'FlagModule DEFINITIONS ::= BEGIN Flag ::= BOOLEAN END\n' > "$test_directory/flag.asn1"
 printf '\001\001\377' > "$test_directory/true.bin"
+printf '\001\001\001' > "$test_directory/noncanonical.bin"
+printf '\001\201\001\377' > "$test_directory/long-length.bin"
+"$test_build_root/asn1c/asn1c" -S "$test_source_root/skeletons" \
+    -D "$test_directory/strict" -pdu=Flag -gen-CER \
+    -no-gen-UPER -no-gen-APER -no-gen-OER -no-gen-JER -no-gen-CBOR \
+    "$test_directory/flag.asn1"
+"${MAKE:-make}" -C "$test_directory/strict" -f converter-example.mk \
+    CC="${CC:-cc}"
+"$test_directory/strict/converter-example" -icer -ocer \
+    "$test_directory/true.bin" > "$test_directory/strict.out"
+cmp "$test_directory/true.bin" "$test_directory/strict.out"
+for strict_case in noncanonical long-length; do
+    if "$test_directory/strict/converter-example" -icer -ocer \
+        "$test_directory/$strict_case.bin" > "$test_directory/strict.out" \
+        2> "$test_directory/strict.err"; then
+        echo "FAIL: strict CER decoder accepted $strict_case input" >&2
+        exit 1
+    fi
+    "$test_directory/strict/converter-example" -iber -ocer \
+        "$test_directory/$strict_case.bin" > "$test_directory/strict.out"
+    cmp "$test_directory/true.bin" "$test_directory/strict.out"
+done
+
+# Disabling CER generation rejects both directions: strict decoding needs
+# the CER encoder to validate canonical form, while BER input stays available.
 "$test_build_root/asn1c/asn1c" -S "$test_source_root/skeletons" \
     -D "$test_directory/disabled" -pdu=Flag -no-gen-CER \
     -no-gen-UPER -no-gen-APER -no-gen-OER -no-gen-JER -no-gen-CBOR \
     "$test_directory/flag.asn1"
 "${MAKE:-make}" -C "$test_directory/disabled" -f converter-example.mk \
     CC="${CC:-cc}"
-"$test_directory/disabled/converter-example" -icer -oder \
+if "$test_directory/disabled/converter-example" -icer -oder \
+    "$test_directory/true.bin" > "$test_directory/decoded.der" \
+    2> "$test_directory/decoded.err"; then
+    echo 'FAIL: converter accepted CER input with CER support disabled' >&2
+    exit 1
+fi
+"$test_directory/disabled/converter-example" -iber -oder \
     "$test_directory/true.bin" > "$test_directory/decoded.der"
 cmp "$test_directory/true.bin" "$test_directory/decoded.der"
 if "$test_directory/disabled/converter-example" -iber -ocer "$test_directory/true.bin" \
