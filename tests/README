@@ -3,6 +3,12 @@ tests-asn1c-smoke    - asn1c compiler produces compilable code for simple types
 tests-c-compiler     - C code compiles and runs, and produces expected result
 tests-skeletons      - "skeletons" code primitives are correct
 tests-randomized     - fuzz-testing of DER/OER/PER/XER codecs
+tests-rust-compiler  - asn1c --rust crates build and interoperate with C
+ioc-v2x              - IOC tables of the C2X module compile and decode XER
+ieee1609-ioc         - IOC SEQUENCE OF members constrained by parent fields
+f1ap-regression      - F1AP code compiles with -findirect-choice/-fcompound-names
+tests-integer-native - oversized INTEGER bounds and native storage (run.sh,
+                       run by hand; not part of make check)
 
 Randomized corpus coverage (local, opt-in)
 ----------------------------------------
