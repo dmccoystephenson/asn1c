@@ -4,14 +4,14 @@ This directory defines the first stage of converting asn1c to Rust: generate Rus
 types and codecs backed by a Rust implementation of the runtime currently in
 `skeletons/`, and migrate the relevant codec tests. The compiler frontend remains
 in C during this stage. The first implementation supplies a safe Rust runtime
-for UPER BOOLEAN, NULL, and bounded INTEGER values; the remaining runtime and
-codec coverage is an incremental conversion target.
+for UPER and CER BOOLEAN, NULL, and bounded INTEGER values; the remaining
+runtime and codec coverage is an incremental conversion target.
 
 The user authorized backend implementation on 2026-10-11. The selected mode is
 `--rust`; codec coverage is incremental and uses safe Rust with `std`. The
 current generated-code slice supports UPER encode/decode for BOOLEAN, NULL,
-and bounded nonextensible INTEGER, plus CER encoding for those types. CER
-decoding and the remaining codecs are not implemented in Rust.
+and bounded nonextensible INTEGER, plus CER encoding and strict CER decoding
+for those types. The remaining codecs are not implemented in Rust.
 
 Start with the [architecture decision](architecture.md) and
 [implementation plan](stage-one-plan.md). Supporting designs describe the
