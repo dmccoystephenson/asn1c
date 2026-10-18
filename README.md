@@ -163,10 +163,10 @@ for a short installation guide.
 
 `--rust` selects native Rust output as a complete compiler mode. The current
 implementation generates a standalone Cargo package with safe, dependency-free
-UPER encode/decode and CER encoding for BOOLEAN, NULL, and finite nonextensible
-INTEGER ranges fitting `i64`. Unsupported schemas, codec requests, and C-specific
-output options fail with diagnostics. Build the generated package with Cargo
-in offline mode.
+UPER encode/decode and CER encoding and strict decoding for BOOLEAN, NULL, and
+finite nonextensible INTEGER ranges fitting `i64`. Unsupported schemas, codec
+requests, and C-specific output options fail with diagnostics. Build the
+generated package with Cargo in offline mode.
 
 See [the initial implementation](docs/rust/implementation.md) for usage and
 limits, and [the conversion plan](docs/rust/README.md) for incremental delivery
