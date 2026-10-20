@@ -584,7 +584,7 @@ considered as imported from that group, instead of falling back to scanning the 
 {\ttfamily -finteger-native-type=\emph{<mode>}} & {\small Select the fixed-width native C storage policy for constrained ASN.1 INTEGER types. Modes are \texttt{auto}, \texttt{int32}, \texttt{uint32}, \texttt{int64}, and \texttt{uint64}; the default is \texttt{auto}. The \texttt{auto} mode preserves the traditional \texttt{long}/\texttt{unsigned long}/INTEGER\_t selection. The explicit modes permit \texttt{int32\_t}, \texttt{uint32\_t}, \texttt{int64\_t}, or \texttt{uint64\_t} storage only when the INTEGER constraint fits that type. Larger or incompatible ranges are generated as INTEGER\_t, while their constraint bounds are still preserved, including unsigned 64-bit and arbitrary-precision bounds.}\\\\
 \textbf{Codecs Generation Options} & \textbf{Description}\\
 \midrule
-{\ttfamily -gen-CER} & {\small Generate CER encoding support and its required BER-family
+{\ttfamily -gen-CER} & {\small Generate CER encoding and strict decoding support and its required BER-family
 dependencies. CER support is enabled by default.}\\
 {\ttfamily -no-gen-CER} & {\small Do not generate CER encoding or strict CER decoding support.
 The converter then rejects \texttt{-icer}; the BER decoder may still accept CER-compatible input.}\\
@@ -1937,7 +1937,8 @@ cargo check --offline --manifest-path generated/Cargo.toml
 cargo test --offline --manifest-path generated/Cargo.toml
 \end{bash}
 
-The generated module provides \texttt{encode\_cer()} for all three values.
+The generated module provides \texttt{encode\_cer()} and strict
+\texttt{decode\_cer()} for all three values.
 For UPER it provides \texttt{encode\_uper()} and \texttt{decode\_uper()}.
 For example:
 

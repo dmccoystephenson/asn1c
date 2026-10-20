@@ -80,8 +80,8 @@ to Rust output. Preserve shared ASN.1 parsing and semantic processing.
 
 Use existing `-gen-*`/`-no-gen-*` syntax for codec selection. Track explicit
 selection separately from legacy default flags. `--rust` currently defaults to
-UPER and CER encoding and reports its support boundary. `-no-gen-UPER` permits
-CER-only output. Explicitly requested unsupported codecs or schema features
+UPER and CER encoding and decoding and reports its support boundary.
+`-no-gen-UPER` permits CER-only output. Explicitly requested unsupported codecs or schema features
 are errors; never silently drop them.
 As families are qualified, add them to the Rust default until all current
 families are supported. Shared frontend inspection remains available in C mode;

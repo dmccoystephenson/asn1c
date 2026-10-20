@@ -91,8 +91,8 @@ whitespace-free JSON, and `jer_decode()` accepts either JER form.
 CER encoding is available through `cer_encode()`, `asn_encode(ATS_CER, ...)`,
 and the generated converter's `-ocer` output selector. The default C target
 generates CER support together with BER support; `-gen-CER` enables its
-BER-family dependencies, `-no-gen-CER` omits CER encoding, and `-no-gen-BER`
-omits the shared family. CER decoding is strict: `cer_decode()`,
+BER-family dependencies, `-no-gen-CER` omits CER encoding and strict decoding,
+and `-no-gen-BER` omits the shared family. CER decoding is strict: `cer_decode()`,
 `asn_decode(ATS_CER, ...)`, and the converter's `-icer` input selector decode
 with the BER decoder, re-encode the value with `cer_encode()`, and reject input
 that is not byte-identical to the canonical CER encoding (for example long-form
