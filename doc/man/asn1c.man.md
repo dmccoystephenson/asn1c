@@ -38,8 +38,8 @@ families produce a diagnostic until implemented.
 --rust
 :   Select the complete Rust output mode, including Rust types, codec methods,
     Cargo metadata, and a copied native Rust runtime. The current default codec
-    set is UPER and CER encoding. `-no-gen-UPER` selects CER-only output;
-    `-no-gen-CER` leaves UPER enabled. Explicit requests for unavailable codecs
+    set is UPER and CER, each encoding and decoding. `-no-gen-UPER` selects
+    CER-only output; `-no-gen-CER` leaves UPER enabled. Explicit requests for unavailable codecs
     and C-specific output options fail. The default output directory in this
     mode is `asn1c-rust`. Build the generated package with
     `cargo check --offline --manifest-path asn1c-rust/Cargo.toml`.

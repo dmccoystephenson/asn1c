@@ -1290,8 +1290,8 @@ usage(const char *av0) {
 "\n"
 
 "  -no-gen-BER           Do not generate the Basic Encoding Rules (BER, X.690) support code\n"
-"  -gen-CER              Generate the Canonical Encoding Rules (CER, X.690) encoder; enables BER in C mode\n"
-"  -no-gen-CER           Do not generate the Canonical Encoding Rules (CER, X.690) encoder\n"
+"  -gen-CER              Generate the Canonical Encoding Rules (CER, X.690) encoder and strict decoder; enables BER in C mode\n"
+"  -no-gen-CER           Do not generate the Canonical Encoding Rules (CER, X.690) encoder and strict decoder\n"
 "  -no-gen-XER           Do not generate the XML Encoding Rules (XER, X.693) support code\n"
 "  -no-gen-JER           Do not generate the JSON Encoding Rules (JER, X.697) support code\n"
 "  -no-gen-CBOR          Do not generate the Concise Binary Object Representation (CBOR, RFC 8949) support code\n"
