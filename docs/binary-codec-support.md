@@ -165,7 +165,56 @@ The generated converter accepts `-iber` and `-ider` as permissive BER-family
 input selectors and `-icer` as the strict CER input selector. Output supports `-oder` and `-ocer` for their respective
 encoding rules.
 
+## PER flavor selection (UPER and APER)
+
+`-no-gen-UPER` and `-no-gen-APER` each omit every skeleton file of the disabled
+flavor (`uper_*`/`*_uper.c` or `aper_*`/`*_aper.c`) and define
+`ASN_DISABLE_UPER_SUPPORT` or `ASN_DISABLE_APER_SUPPORT`. Code needed by both
+flavors must therefore live in a module that both the `CODEC-UPER` and
+`CODEC-APER` sections of `skeletons/file-dependencies` emit, normally
+`per_support.[ch]`. One example is the checked range helpers
+`per_{long,imax,umax}_range_{rebase,unrebase}()`. An APER file that calls a
+`uper_support` function, or the reverse, compiles when both flavors are
+generated but breaks single-flavor projects. The 2026-10-20 fix moved the range
+helpers out of `uper_support.[ch]` for this reason.
+
+[check-PER-single-flavor.sh](../tests/tests-asn1c-smoke/check-PER-single-flavor.sh)
+runs this check quickly. It builds APER-only and UPER-only converters and asserts
+that no file of the disabled flavor is emitted. It round-trips constrained
+INTEGERs, checks that the bytes match a combined build, and fails on the
+pre-fix tree. The slower per-type smoke tests also run each `-no-gen-*` variant.
+The skeleton archives are `check_LTLIBRARIES`, so after moving skeleton symbols
+between files you must rebuild them with `make -C skeletons check`. Otherwise
+stale objects cause duplicate-symbol link errors in `tests/tests-skeletons`.
+
 ## Verification
+
+The PER INTEGER security regressions are covered by
+[`check-PER-INTEGER-security.c`](../tests/tests-skeletons/check-PER-INTEGER-security.c).
+For native unsigned INTEGERs, both PER constraint-bound slots contain unsigned
+bit patterns even though the legacy structure declares them as `intmax_t`.
+Code must interpret both slots as `uintmax_t`, validate the bounds and offset,
+and only then add or subtract. The checked unsigned helpers in `per_support`
+also reject null output pointers and reversed bounds without changing output.
+APER range alignment uses a checked maximum offset rather than an inclusive
+signed range size, which can overflow at full-width bounds.
+
+For semi-constrained `INTEGER (0..MAX)`, decoding preserves the positive byte
+buffer directly, including values wider than `uintmax_t`. NativeInteger
+conversion remains responsible for rejecting values too wide for native
+storage. This restores zero-bound decoding; it does not add arbitrary-precision
+arithmetic for nonzero lower bounds or expand the existing encoder limits.
+The single-flavor smoke test also generates native uint64 fields whose lower
+or upper bounds exceed `INTMAX_MAX`, and round-trips them in APER-only,
+UPER-only and combined builds.
+
+The regression executable runs under the configured skeleton sanitizers and
+exhausts all 256 one-octet inputs for a seven-bit range near `UINTMAX_MAX`.
+It also checks truncated determinants/payloads, negative unsigned values,
+malformed API arguments and full signed-range encoding. The four codec entry
+points are split into documented helpers; Clang control-flow graphs give a
+maximum cyclomatic complexity of 19 for these codec functions, below the
+project limit of 20. Each function is also shorter than 200 lines.
 
 The 2026-10-12 fragment-tag and opaque-ANY compatibility correction passes the
 complete generated C suite (71/71) under the configured ASan/UBSan test flags.
