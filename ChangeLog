@@ -1,4 +1,51 @@
 Changes since v1.5.3:
+	* Fixed the retagged-string randomized bundle's GCC UBSan failure when a
+	  valid empty UTF8String reached OCTET_STRING_compare with a null backing
+	  buffer. Empty comparisons/copies now avoid null C-library arguments;
+	  hardened the corresponding BIT STRING operations and invalid copy-size
+	  handling. Added deterministic empty tagged-string regressions alongside
+	  the randomized cases. CI failure reported by the repository maintainer;
+	  fixes and tests by asn1c maintainers with Codex/Luna assistance. This is
+	  follow-up to the #578/#581 review; original reports by Ruud Schramp
+	  (@Schramp).
+	* Documented a proposed incremental JER design, covering per-PDU framing,
+	  persistent typed decoding, limits, transactional sinks and split-input
+	  testing against X.697/ECMA-404. This entry describes a proposal, not a
+	  new streaming implementation. Motivated by issue #578 and PR #579 from
+	  Ruud Schramp (@Schramp); design by asn1c maintainers with Codex assistance.
+	* Verified the #578/#581 fixes against ITU-T X.680, X.690 and X.697
+	  (2021), X.690 Erratum 1, and ECMA-404. The standards review found a
+	  remaining fragment-validation gap in generated character-string aliases:
+	  their final all_tags entry can still be the character-string tag.
+	  Built-in component matching now enforces universal OCTET STRING tag 4
+	  (or BIT STRING tag 3) below effective explicit wrappers, preserving ANY
+	  and custom-operation behavior. Added alias-fragment regressions and
+	  the published X.690 "Jones" examples. Corrected check-25's invalid
+	  positive component tags while retaining all old tag forms as explicit
+	  negative mutations; also covered all four JSON whitespace characters.
+	  Standards review and follow-up correction by asn1c maintainers with
+	  Codex/Luna assistance; original reporter and patch-provider credits
+	  follow below.
+	* Fixed issue #578: the JER converter now retains every PDU in large
+	  concatenated inputs and checks decode failures instead of returning a
+	  partial value as success. Replaced seek-based whole-file sizing with
+	  checked stream buffering, including pipes; checked buffer growth and
+	  released retained input before processing another file. Shared converter
+	  handling now rejects read errors and impossible decoder consumption.
+	  Added generated converter regressions for large/small multi-PDU inputs and malformed
+	  input. Report and original PR #579 by Ruud Schramp (@Schramp), with
+	  investigation assisted by Claude Code; security hardening and extended
+	  tests by asn1c maintainers with Codex/Luna assistance.
+	* Fixed issue #581 and completed PR #580: BER string wrapper checks use
+	  the effective wire tag chain while fragment checks retain the descriptor's
+	  final all_tags tag. The original PR changed the fragment fallback too,
+	  accepting invalid VisibleString fragments and failing check-25 in all
+	  three C CI jobs. Preserved that rejection test and added effective-tag,
+	  malformed-fragment, generated-alias and randomized-string coverage.
+	  Credits: Ruud Schramp (@Schramp) for issue #581 and its correct patch;
+	  javier (@mr-j0nes) for PR #580 and the original skeleton regression;
+	  asn1c maintainers with Codex/Luna assistance for security corrections
+	  and extended regression coverage. See docs/issues-578-581-security-review.md.
 	* Fixed PER security-review regressions in native unsigned 64-bit ranges:
 	  APER/UPER now interpret both signed metadata slots as unsigned when the
 	  type uses unsigned native storage, validate the complete range, and
