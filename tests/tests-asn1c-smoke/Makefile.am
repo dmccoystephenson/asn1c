@@ -40,6 +40,8 @@ TESTS += check-binary-format-selectors.sh
 TESTS += check-CER.sh
 TESTS += check-gen-autotools.sh
 TESTS += check-PER-single-flavor.sh
+TESTS += check-JER-multi-pdu.sh
+TESTS += check-BER-retag.sh
 
 CLEANFILES = Makefile.am.* *.[acho] check-*.log check-*.trs
 

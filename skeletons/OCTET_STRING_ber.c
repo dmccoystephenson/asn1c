@@ -430,11 +430,15 @@ octet_string_ber_unwind(struct OCTET_STRING_ber_state *state) {
 /*
  * Select the tag expected at the current constructed-string nesting level.
  * Original source: New helper extracted from the OCTET STRING BER tag switch.
- * Version/date: 1.0, 2026-10-11.
+ * Version/date: 1.1, 2026-10-21.
  * Parameters: state supplies descriptor and frame; actual is the fetched tag.
- * Returns: Descriptor tag for strings, or actual for untyped ANY values.
+ * Returns: Effective wrapper tag by level, then the final containment tag;
+ *          actual for untyped ANY values. Built-in fragment tags are enforced
+ *          separately by octet_string_ber_child_tag_matches().
  * Errors: None; malformed descriptor arrays are rejected by decoder entry.
- * Responsible party: asn1c maintainers. History/example: validates chunks.
+ * Responsible party: asn1c maintainers. History: 1.1 separates effective
+ * `tags` from containment `all_tags` after reviewing issue #581 and PR #580.
+ * Example: validates OCTET STRING fragments nested below an implicit tag.
  */
 static ber_tlv_tag_t
 octet_string_ber_expected_tag(const struct OCTET_STRING_ber_state *state,
@@ -443,21 +447,22 @@ octet_string_ber_expected_tag(const struct OCTET_STRING_ber_state *state,
 
     if(state->variant == ASN_OSUBV_ANY || !state->sel) return actual;
     level = state->sel->cont_level;
-    if(level < state->td->all_tags_count)
-        return state->td->all_tags[level];
+    if(level < state->td->tags_count)
+        return state->td->tags[level];
     if(state->td->all_tags_count)
         return state->td->all_tags[state->td->all_tags_count - 1];
     return actual;
 }
 
 /*
- * Find the CER component tag associated with a built-in string operation.
- * Original source: New asn1c BER/CER tag resolver, following X.690 8.23.3.
- * Version/date: 1.1, 2026-10-12.
+ * Find the universal component tag required for a built-in string operation.
+ * Original source: X.690 8.23.3 and 8.7.3.2; local resolver added for BER/CER.
+ * Version/date: 1.2, 2026-10-21.
  * Parameters: td identifies the operation table; tag receives the component tag.
  * Returns: 1 when a built-in operation is recognized, otherwise 0.
  * Errors: None; unknown/custom operations remain descriptor-only.
- * Responsible party: asn1c maintainers. History: Maps character components to 4.
+ * Responsible party: asn1c maintainers. History: Maps restricted character
+ * string components to OCTET STRING tag 4 and BIT STRING components to tag 3.
  * Example: resolves UTF8String to OCTET STRING tag 4 and BIT STRING to tag 3.
  */
 static int
@@ -477,14 +482,17 @@ octet_string_ber_fragment_tag(const asn_TYPE_descriptor_t *td,
 }
 
 /*
- * Match descriptor prefixes or legal OCTET/BIT STRING component tags.
- * Original source: New asn1c BER/CER compatibility helper, following X.690 9.2.
- * Version/date: 1.1, 2026-10-12.
- * Parameters: state identifies the active frame; actual/expected are wire tags.
- * Returns: 1 for an exact descriptor tag or the operation's component tag.
- * Errors: Custom operations and explicit wrappers receive no fallback.
- * Responsible party: asn1c maintainers. History: Rejects natural UTF8 chunks.
- * Example: accepts UTF8String components with tag 4, never tag 12 by fallback.
+ * Match effective wrapper tags and built-in fragment component tags.
+ * Original source: X.690 8.14.3/8.14.4 and 8.23.3/8.7.3.2; local BER helper.
+ * Version/date: 1.2, 2026-10-21.
+ * Parameters: state identifies the frame; actual/expected are the fetched and
+ *   descriptor tags.
+ * Returns: 1 for the exact effective wrapper, natural built-in fragment tag,
+ *   or the exact containment fallback of a custom operation.
+ * Errors: None; malformed descriptor arrays are rejected at decoder entry.
+ * Responsible party: asn1c maintainers. History: Keeps wrappers after IMPLICIT
+ *   retagging while rejecting repeated outer tags as character fragments.
+ * Example: accepts UTF8String OCTET STRING tag 4 fragments, never tag 12 there.
  */
 static int
 octet_string_ber_child_tag_matches(
@@ -492,13 +500,18 @@ octet_string_ber_child_tag_matches(
     ber_tlv_tag_t expected) {
     ber_tlv_tag_t fragment_tag;
 
-    if(actual == expected) return 1;
-    if(!state->sel
-    || state->sel->bits_chopped == OS_EXPLICIT_FRAME_EMPTY
+    if(!state->sel) return actual == expected;
+    if(state->sel->bits_chopped == OS_EXPLICIT_FRAME_EMPTY
     || state->sel->bits_chopped == OS_EXPLICIT_FRAME_HAS_CHILD)
-        return 0;
-    return octet_string_ber_fragment_tag(state->td, &fragment_tag)
-        && actual == fragment_tag;
+        return actual == expected;
+    if(state->variant == ASN_OSUBV_ANY) return actual == expected;
+
+    /* After wrapper frames, X.690 8.23.3/8.7.3.2 require component tags. */
+    if(octet_string_ber_fragment_tag(state->td, &fragment_tag))
+        return actual == fragment_tag;
+
+    /* Unknown operations retain their exact final containment-tag behavior. */
+    return actual == expected;
 }
 
 /*
