@@ -235,6 +235,8 @@ typedef struct asn1p_expr_s {
 		  EM_OPTIONAL	= 0x07,	/* 00111 Optional member */
 		  EM_DEFAULT	= 0x0F,	/* 01111 default_value */
 		  EM_UNRECURSE	= 0x10,	/* 10000 Use safe naming */
+		  EM_EXTENSION_GROUP = 0x20, /* Synthetic extension addition group */
+		  EM_OPEN_TYPE_UNKNOWN = 0x40 /* Opaque APER alternative for an extensible IOC */
 		} flags;
 		asn1p_value_t *default_value;	/* For EM_DEFAULT case */
 	} marker;
@@ -278,14 +280,15 @@ typedef struct asn1p_expr_s {
 	  TM_NAMECLASH	= (1<<3), /* Name clash found, need to add module name to resolve */
 	  TM_NAMEGIVEN  = (1<<4), /* The expression has already yielded a name */
 	  TM_PDU_DEPENDENCY = (1<<5), /* Part of PDU dependency chain */
-	  TM_ENCODING_INSTRUCTION = (1<<6) /* ENCODING-CONTROL instruction, not a regular type */
+	  TM_ENCODING_INSTRUCTION = (1<<6), /* ENCODING-CONTROL instruction, not a regular type */
+	  TM_UNIQUE_INDEX = (1<<7) /* Temporary recursion mark during type indexing */
 	} _mark;
 
 	/*
 	 * Some tags used by the compiler.
 	 */
 	int _anonymous_type;	/* This type is unnamed */
-	int _type_unique_index;	/* A per top-level-type unique index */
+	int _type_unique_index;	/* Unique per-input suffix for generated C symbols */
 	int _type_referenced;	/* This type is referenced from another place */
 
 	/*

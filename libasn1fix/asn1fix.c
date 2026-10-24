@@ -1,5 +1,6 @@
 #include "asn1fix_internal.h"
 #include "asn1fix.h"
+#include <limits.h>
 
 /* Print everything to stderr */
 static void _default_error_logger(int _severity, const char *fmt, ...);
@@ -110,6 +111,13 @@ asn1f_process(asn1p_t *asn, enum asn1f_flags flags,
         asn1_namespace_free(arg.ns);
         arg.ns = 0;
     }
+    /*
+     * Generated source files may contain definitions from several top-level
+     * assignments, including parameterized specializations. Keep their inner
+     * type indexes unique across the full ASN.1 input so generated C symbols
+     * cannot collide when those assignments share an output file.
+     */
+    asn1f_apply_unique_index(0);
     /* PHASE II. */
     TQ_FOR(arg.mod, &(asn->modules), mod_next) {
         arg.ns = asn1_namespace_new_from_module(arg.mod, 0);
@@ -375,10 +383,9 @@ asn1f_fix_module__phase_2(arg_t *arg) {
 		}
 
 		/*
-		 * Uniquely tag each inner type.
+		 * Uniquely tag each inner type across all modules in this input.
 		 */
-		asn1f_apply_unique_index(0);
-		ret = asn1f_recurse_expr(arg, asn1f_apply_unique_index);
+		ret = asn1f_apply_unique_index(arg);
 		RET2RVAL(ret, rvalue);
 
 		assert(arg->expr == expr);
@@ -661,14 +668,83 @@ asn1f_check_duplicate(arg_t *arg) {
 	return rvalue;
 }
 
+/*
+ * Purpose: Assign unique suffixes throughout expression and object-set trees.
+ * Original source: ASN.1 fixer, phase-II inner-type indexing.
+ * Version/date: 2026-10-23.
+ * Parameters: arg is the current expression, or NULL to reset the counter.
+ * Returns: Zero on success; -1 if a specialization is missing or indexes overflow.
+ * Exceptions: Does not throw exceptions; sets errno on invalid state or overflow.
+ * Responsible party: asn1c maintainers.
+ * History: Assign indexes across one ASN.1 input and include nested object-set
+ *   cell expressions so generated specializations cannot reuse symbol suffixes.
+ * Example: asn1f_apply_unique_index(NULL) resets before phase II; then pass
+ *   each module expression to assign indexes to its members and object-set cells.
+ */
 static int
 asn1f_apply_unique_index(arg_t *arg) {
-	static int unique_index;
+	static int unique_index; /* state variable: next per-input type suffix. */
+	asn1p_expr_t *expr;
+	asn1p_expr_t *member;
+	int rvalue = 0;
 	if(!arg) { unique_index = 0; return 0; }
 
-	arg->expr->_type_unique_index = ++unique_index;
+	expr = arg->expr;
+	if(!expr) { errno = EINVAL; return -1; }
 
-	return 0;
+	/* Use a temporary mark because class parsing may leave local indexes here. */
+	if(expr->_mark & TM_UNIQUE_INDEX) return 0;
+	expr->_mark |= TM_UNIQUE_INDEX;
+
+	/* Parameter templates index each active specialization, not the template. */
+	if(expr->lhs_params && expr->spec_index == -1) {
+		for(int i = 0; i < expr->specializations.pspecs_count; i++) {
+			arg->expr = expr->specializations.pspec[i].my_clone;
+			if(!arg->expr) {
+				RET2RVAL(-1, rvalue);
+				continue;
+			}
+			RET2RVAL(asn1f_apply_unique_index(arg), rvalue);
+		}
+		arg->expr = expr;
+		expr->_mark &= ~TM_UNIQUE_INDEX;
+		return rvalue;
+	}
+
+	if(unique_index == INT_MAX) {
+		errno = EOVERFLOW;
+		expr->_mark &= ~TM_UNIQUE_INDEX;
+		return -1;
+	}
+	expr->_type_unique_index = ++unique_index;
+
+	TQ_FOR(member, &expr->members, next) {
+		arg->expr = member;
+		RET2RVAL(asn1f_apply_unique_index(arg), rvalue);
+	}
+
+	/* Table-cell values are expressions, but are not linked through members. */
+	if(expr->ioc_table) {
+		for(size_t rn = 0; rn < expr->ioc_table->rows; rn++) {
+			asn1p_ioc_row_t *row = expr->ioc_table->row[rn];
+			if(!row || (row->columns && !row->column)) {
+				errno = EINVAL;
+				RET2RVAL(-1, rvalue);
+				continue;
+			}
+			for(size_t cn = 0; cn < row->columns; cn++) {
+				asn1p_expr_t *value = row->column[cn].value;
+				if(!value) continue;
+				arg->expr = value;
+				RET2RVAL(asn1f_apply_unique_index(arg), rvalue);
+			}
+		}
+	}
+
+	arg->expr = expr;
+	expr->_mark &= ~TM_UNIQUE_INDEX;
+
+	return rvalue;
 }
 
 /*
