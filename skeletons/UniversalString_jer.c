@@ -7,6 +7,16 @@
 #include <UniversalString.h>
 #include <UTF8String.h>
 
+/*
+ * Decode a UTF-8 JER string and convert its contents to UCS-4.
+ * Original source: asn1c UniversalString JER runtime skeleton.
+ * Version/date: 1.0, 2017-06-16.
+ * Inputs: codec context, descriptor, constraints, destination, and input chunk.
+ * Returns: Decoder status and consumed input count.
+ * Errors: Allocation or UTF-8 conversion failures return RC_FAIL.
+ * Responsible party: asn1c maintainers. History: Existing runtime decoder.
+ * Example: UniversalString_decode_jer(ctx, td, c, &value, json, length).
+ */
 asn_dec_rval_t
 UniversalString_decode_jer(const asn_codec_ctx_t *opt_codec_ctx,
                            const asn_TYPE_descriptor_t *td,
@@ -64,6 +74,17 @@ UniversalString_decode_jer(const asn_codec_ctx_t *opt_codec_ctx,
     return rc;
 }
 
+/*
+ * Encode one UniversalString as a quoted JER string.
+ * Original source: asn1c UniversalString JER runtime skeleton.
+ * Version/date: 1.1, 2026-10-24.
+ * Inputs: td/constraints describe the type; sptr is its UCS-4 value; cb/key
+ *         receive output; ilevel and flags select formatting.
+ * Returns: Encoded byte count, or -1 with the failing type and value recorded.
+ * Errors: Invalid values, dump errors, and callback failures return failure.
+ * Responsible party: asn1c maintainers. History: callback failure fix, 2026-10-24.
+ * Example: UniversalString_encode_jer(td, NULL, value, 0, JER_F, cb, key).
+ */
 asn_enc_rval_t
 UniversalString_encode_jer(const asn_TYPE_descriptor_t *td,
                            const asn_jer_constraints_t *constraints,
@@ -86,6 +107,7 @@ UniversalString_encode_jer(const asn_TYPE_descriptor_t *td,
     er.encoded += ro_encoded;
     ASN__CALLBACK("\"", 1);
 
-cb_failed:
     ASN__ENCODED_OK(er);
+cb_failed:
+    ASN__ENCODE_FAILED;
 }
