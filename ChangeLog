@@ -1,4 +1,11 @@
 Changes since v1.5.3:
+	* Load skeletons/standard-modules/*.asn1 in a fixed order (descending
+	  file name) instead of readdir(3) order, which varies by filesystem.
+	  The load order sets the "_N" suffix of standard-module descriptors
+	  such as EXTERNAL's inner "encoding"; the chosen order keeps the
+	  suffixes in the existing check-parsing.sh baselines. Fixes spurious
+	  distcheck failures where the extracted tree listed the files in the
+	  other order (fork issue #52).
 	* Fixed issue #591: generate INTEGER DEFAULT setters and comparators
 	  according to the actual selected C storage type. Unconstrained INTEGER
 	  members in unsigned native modes now use INTEGER_t conversion callbacks
