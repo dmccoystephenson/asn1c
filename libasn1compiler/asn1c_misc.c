@@ -376,7 +376,7 @@ asn1c_type_name(arg_t *arg, asn1p_expr_t *expr, enum tnfmt _format) {
 			}
 		}
 
-		if(_format != TNF_RSAFE  && terminal && ((terminal->spec_index != -1) || (terminal->_mark & TM_NAMECLASH))) {
+		if(terminal && ((terminal->spec_index != -1) || (terminal->_mark & TM_NAMECLASH))) {
 			/*
 			 * For TNF_INCLUDE format, when the terminal is a specialization
 			 * (spec_index >= 0), we need to include the parent parameterized
@@ -395,6 +395,17 @@ asn1c_type_name(arg_t *arg, asn1p_expr_t *expr, enum tnfmt _format) {
 				}
 			} else {
 				exprid = terminal;
+				typename = 0;
+			}
+		}
+
+		if(_format == TNF_RSAFE && terminal && !(terminal->expr_type & ASN_CONSTR_MASK)
+		 && !(exprid && (exprid->expr_type & ASN_CONSTR_MASK))) {
+			/* an alias (A ::= B), also a numbered instance that is one: the struct that exists is the final constructed type's */
+			asn1p_expr_t *fin = WITH_MODULE_NAMESPACE(expr->module, expr_ns,
+				asn1f_find_terminal_type_ex(arg->asn, expr_ns, expr));
+			if(fin && (fin->expr_type & ASN_CONSTR_MASK)) {
+				exprid = fin;
 				typename = 0;
 			}
 		}
@@ -547,6 +558,13 @@ asn1c_type_name(arg_t *arg, asn1p_expr_t *expr, enum tnfmt _format) {
 		return asn1c_make_identifier(stdname ? 0 : AMI_USE_PREFIX, exprid,
 				exprid?"t":typename, exprid?0:"t", (char*)0);
 	case TNF_RSAFE:	/* Recursion-safe type */
+		if(exprid) {
+			/* A specialization or clashing name: the struct tag carries the same suffix as its definition */
+			static char rsafe_name[512];
+			const char *id = asn1c_make_identifier(stdname ? 0 : AMI_USE_PREFIX, exprid, (char*)0);
+			snprintf(rsafe_name, sizeof rsafe_name, "struct %s", id ? id : "");
+			return rsafe_name;
+		}
 		/*
 		 * Keep the recursion-safe "struct" keyword outside the generated
 		 * type name, but still apply -fprefix to the struct tag itself.
