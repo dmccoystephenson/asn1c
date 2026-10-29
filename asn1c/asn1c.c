@@ -1114,6 +1114,22 @@ cleanup:
 }
 
 /*
+ * Order standard module file names for loading.
+ * Neither readdir(3) nor _findfirst() guarantees an order, and the module
+ * load order fixes the "_N" suffix of every standard-module descriptor
+ * (asn1f_apply_unique_index() numbers types in module order). Descending
+ * byte order is used because it reproduces the suffixes that existing
+ * generated code and the check-parsing.sh baselines carry
+ * (ASN1C-UsefulInformationObjectClasses before ASN1-Object-Identifier-Module).
+ */
+static int
+compareStandardModuleNames(const void *ap, const void *bp) {
+    const char *a = *(const char *const *)ap;
+    const char *b = *(const char *const *)bp;
+    return strcmp(b, a);
+}
+
+/*
  * Parse and import *.asn1 from skeletons/standard-modules
  */
 static int
@@ -1123,6 +1139,11 @@ importStandardModules(asn1p_t *asn, const char *skeletons_dir) {
     const char *filename;
     char *fullname;
     char *target_dir;
+    char **names = NULL;
+    char **new_names;
+    size_t names_count = 0;
+    size_t names_size = 0;
+    size_t i;
     int target_dir_len;
     int len;
 #ifdef _WIN32
@@ -1164,6 +1185,7 @@ importStandardModules(asn1p_t *asn, const char *skeletons_dir) {
         return -1;
     }
 
+    /* Collect the file names first; the directory order is unspecified. */
 #ifdef _WIN32
     do {
         filename = c_file.name;
@@ -1173,17 +1195,39 @@ importStandardModules(asn1p_t *asn, const char *skeletons_dir) {
 #endif
         len = strlen(filename);
         if(len <= 5 || strcmp(filename + len - 5, ".asn1")) continue;
+        if(names_count == names_size) {
+            size_t new_size = names_size ? 2 * names_size : 4;
+            new_names = realloc(names, new_size * sizeof(names[0]));
+            if(!new_names) continue; /* Just skip it, no big deal */
+            names = new_names;
+            names_size = new_size;
+        }
         len = target_dir_len + 1 + len + 1;
         fullname = malloc(len);
         if(!fullname) continue; /* Just skip it, no big deal */
         snprintf(fullname, len, "%s/%s", target_dir, filename);
-        filename = fullname;
+        names[names_count++] = fullname;
+#ifdef _WIN32
+    } while(_findnext(dir, &c_file) == 0);
+    _findclose(dir);
+#else
+    } /* while(readdir()) */
+    closedir(dir);
+#endif
+
+    if(names_count > 1)
+        qsort(names, names_count, sizeof(names[0]),
+              compareStandardModuleNames);
+
+    for(i = 0; i < names_count; i++) {
+        filename = names[i];
 
         new_asn = asn1p_parse_file(filename, A1P_NOFLAGS);
         if(new_asn == NULL) {
             fprintf(stderr, "WARNING: Cannot parse standard module \"%s\"\n",
                     filename);
             ret = -1;
+            free(names[i]);
             continue;
         }
 
@@ -1194,15 +1238,9 @@ importStandardModules(asn1p_t *asn, const char *skeletons_dir) {
         }
         asn1p_delete(new_asn);
         asn1p_lex_destroy();
-
-#ifdef _WIN32
-    } while(_findnext(dir, &c_file) == 0);
-    _findclose(dir);
-#else
-        free(fullname);
-    } /* while(readdir()) */
-    closedir(dir);
-#endif
+        free(names[i]);
+    }
+    free(names);
 
 #ifdef _WIN32
     free(pattern);

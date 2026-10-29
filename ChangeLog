@@ -1,4 +1,35 @@
 Changes since v1.5.3:
+	* Load skeletons/standard-modules/*.asn1 in a fixed order (descending
+	  file name) instead of readdir(3) order, which varies by filesystem.
+	  The load order sets the "_N" suffix of standard-module descriptors
+	  such as EXTERNAL's inner "encoding"; the chosen order keeps the
+	  suffixes in the existing check-parsing.sh baselines. Fixes spurious
+	  distcheck failures where the extracted tree listed the files in the
+	  other order (fork issue #52).
+	* Fixed issue #591: generate INTEGER DEFAULT setters and comparators
+	  according to the actual selected C storage type. Unconstrained INTEGER
+	  members in unsigned native modes now use INTEGER_t conversion callbacks
+	  instead of invalid scalar operators. Added generated-code and callback
+	  regressions for all integer-native storage modes. Encode negative DEFAULT
+	  values with an identifier-safe "m" suffix in callback names.
+	* Updated the 127-per-long compiler-output baseline after issue #590:
+	  its two inline unsigned INTEGER members now reference their concrete
+	  suffixed descriptors. This keeps check-parsing.sh aligned with generated
+	  output and checks the corrected naming in the existing PER fixture.
+	* Fixed issue #590: emit distinct suffixed descriptors for repeated,
+	  constrained native INTEGER members nested in separate CHOICE alternatives
+	  when compound names and fixed-width unsigned storage are enabled. Added a
+	  generated-code compile/link regression for uint32 and uint64 modes.
+	* Corrected callback error handling in JER UniversalString and canonical
+	  XER SET OF encoders, and balanced JER CHOICE recursion depth when a child
+	  encoder fails. Custom XER TEXT BIT STRING generation now omits callback
+	  labels and callback-only variables when there are no named bits, so the
+	  generated source compiles with strict warning settings. Added focused
+	  failure-path and generated-code regressions.
+	* Removed an unreachable XER SEQUENCE encoder failure label left after
+	  callback handling moved into a helper; Apple Clang rejected the generated
+	  code under -Wall -Werror. Pass the configured compiler to the IEEE 1609
+	  IOC test so its generated-code build uses Clang in the Clang CI job.
 	* Corrected the issue #552 C regression to inspect the alias descriptor's
 	  inherited PER range instead of a generated constraint-table suffix, which
 	  changes when symbol indexes are allocated across the input.

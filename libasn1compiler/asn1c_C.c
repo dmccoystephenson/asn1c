@@ -2876,6 +2876,84 @@ encoding_type_description(enum asn1p_encoding_control_type_e type) {
 }
 
 /*
+ * Purpose: emit a XER TEXT encoder for BIT STRING named bits.
+ * Original source: BIT STRING branch of emit_custom_xer_encoder.
+ * Version/date: 1.0, 2026-10-24.
+ * Parameters: arg is the generator state; expr is the ASN.1 type; type_name is
+ * its generated C name.
+ * Returns: 1 after writing the custom encoder to the generated source.
+ * Errors: none; source output failures are handled by the generator framework.
+ * Responsible party: asn1c maintainers.
+ * History: extracted to isolate conditional callback-state emission.
+ * Use example: emit_text_bit_string_xer_encoder(arg, expr, MKID(expr)).
+ */
+static int
+emit_text_bit_string_xer_encoder(arg_t *arg, asn1p_expr_t *expr,
+                                 const char *type_name) {
+    asn1p_expr_t *v;
+    int has_named_bits = 0;
+
+    /* Emit callback-only state only when a named bit can call the callback. */
+    TQ_FOR(v, &(expr->members), next) {
+        if(v->expr_type == A1TC_UNIVERVAL) {
+            has_named_bits = 1;
+            break;
+        }
+    }
+
+    OUT("\n");
+    OUT("/* Custom XER encoder per ENCODING-CONTROL directive */\n");
+    OUT("static asn_enc_rval_t\n");
+    OUT("%s_encode_xer(const asn_TYPE_descriptor_t *td, const void *sptr,\n", type_name);
+    INDENT(+1);
+    OUT("int ilevel, enum xer_encoder_flags_e flags,\n");
+    OUT("asn_app_consume_bytes_f *cb, void *app_key) {\n");
+    INDENT(-1);
+    INDENT(+1);
+    OUT("const BIT_STRING_t *st = (const BIT_STRING_t *)sptr;\n");
+    OUT("asn_enc_rval_t er = {0, 0, 0};\n");
+    if(has_named_bits) OUT("int first = 1;\n");
+    OUT("(void)td;\n");
+    OUT("(void)ilevel;\n");
+    OUT("(void)flags;\n");
+    if(!has_named_bits) {
+        OUT("(void)cb;\n");
+        OUT("(void)app_key;\n");
+    }
+    OUT("if(!st || !st->buf) ASN__ENCODE_FAILED;\n");
+    TQ_FOR(v, &(expr->members), next) {
+        const char *wire_name;
+        if(v->expr_type != A1TC_UNIVERVAL) continue;
+        wire_name = v->encoding_control.replacement
+            ? v->encoding_control.replacement : v->Identifier;
+        OUT("if(st->size > %ld && (st->buf[%ld] & 0x%02x)) {\n",
+            (long)(v->value->value.v_integer / 8),
+            (long)(v->value->value.v_integer / 8),
+            0x80 >> (v->value->value.v_integer % 8));
+        INDENT(+1);
+        OUT("if(!first) ASN__CALLBACK(\" \", 1);\n");
+        OUT("ASN__CALLBACK(\"%s\", %ld);\n",
+            wire_name, (long)strlen(wire_name));
+        OUT("er.encoded += %ld + (first ? 0 : 1);\n",
+            (long)strlen(wire_name));
+        OUT("first = 0;\n");
+        INDENT(-1);
+        OUT("}\n");
+    }
+    OUT("ASN__ENCODED_OK(er);\n");
+    if(has_named_bits) {
+        OUT("cb_failed:\n");
+        INDENT(+1);
+        OUT("ASN__ENCODE_FAILED;\n");
+        INDENT(-1);
+    }
+    INDENT(-1);
+    OUT("}\n");
+    OUT("\n");
+    return 1;
+}
+
+/*
  * Generate custom XER encoder for types with ENCODING-CONTROL directives
  */
 static int
@@ -2890,51 +2968,7 @@ emit_custom_xer_encoder(arg_t *arg, asn1p_expr_t *expr) {
     asn1p_expr_type_e etype = expr_get_type(arg, expr);
 
     if(enc_type == EC_XER_TEXT && etype == ASN_BASIC_BIT_STRING) {
-        asn1p_expr_t *v;
-        OUT("\n");
-        OUT("/* Custom XER encoder per ENCODING-CONTROL directive */\n");
-        OUT("static asn_enc_rval_t\n");
-        OUT("%s_encode_xer(const asn_TYPE_descriptor_t *td, const void *sptr,\n", type_name);
-        INDENT(+1);
-        OUT("int ilevel, enum xer_encoder_flags_e flags,\n");
-        OUT("asn_app_consume_bytes_f *cb, void *app_key) {\n");
-        INDENT(-1);
-        INDENT(+1);
-        OUT("const BIT_STRING_t *st = (const BIT_STRING_t *)sptr;\n");
-        OUT("asn_enc_rval_t er = {0, 0, 0};\n");
-        OUT("int first = 1;\n");
-        OUT("(void)td;\n");
-        OUT("(void)ilevel;\n");
-        OUT("(void)flags;\n");
-        OUT("if(!st || !st->buf) ASN__ENCODE_FAILED;\n");
-        TQ_FOR(v, &(expr->members), next) {
-            const char *wire_name;
-            if(v->expr_type != A1TC_UNIVERVAL) continue;
-            wire_name = v->encoding_control.replacement
-                ? v->encoding_control.replacement : v->Identifier;
-            OUT("if(st->size > %ld && (st->buf[%ld] & 0x%02x)) {\n",
-                (long)(v->value->value.v_integer / 8),
-                (long)(v->value->value.v_integer / 8),
-                0x80 >> (v->value->value.v_integer % 8));
-            INDENT(+1);
-            OUT("if(!first) ASN__CALLBACK(\" \", 1);\n");
-            OUT("ASN__CALLBACK(\"%s\", %ld);\n",
-                wire_name, (long)strlen(wire_name));
-            OUT("er.encoded += %ld + (first ? 0 : 1);\n",
-                (long)strlen(wire_name));
-            OUT("first = 0;\n");
-            INDENT(-1);
-            OUT("}\n");
-        }
-        OUT("ASN__ENCODED_OK(er);\n");
-        OUT("cb_failed:\n");
-        INDENT(+1);
-        OUT("ASN__ENCODE_FAILED;\n");
-        INDENT(-1);
-        INDENT(-1);
-        OUT("}\n");
-        OUT("\n");
-        return 1;
+        return emit_text_bit_string_xer_encoder(arg, expr, type_name);
     }
     
     OUT("\n");
@@ -3026,6 +3060,16 @@ emit_custom_xer_decoder(arg_t *arg, asn1p_expr_t *expr) {
 
     if(enc_type == EC_XER_TEXT && etype == ASN_BASIC_BIT_STRING) {
         asn1p_expr_t *v;
+        int has_named_bits = 0;
+
+        /* Identify named bits before emitting state that only their parser uses. */
+        TQ_FOR(v, &(expr->members), next) {
+            if(v->expr_type == A1TC_UNIVERVAL) {
+                has_named_bits = 1;
+                break;
+            }
+        }
+
         GEN_INCLUDE_STD("asn_codecs_prim");
         OUT("\n");
         OUT("/* Custom XER decoder per ENCODING-CONTROL directive */\n");
@@ -3039,7 +3083,7 @@ emit_custom_xer_decoder(arg_t *arg, asn1p_expr_t *expr) {
         OUT("const char *p = (const char *)chunk_buf;\n");
         OUT("const char *end = p + chunk_size;\n");
         OUT("size_t max_bit = 0;\n");
-        OUT("int any = 0;\n");
+        if(has_named_bits) OUT("int any = 0;\n");
         OUT("(void)td;\n");
         TQ_FOR(v, &(expr->members), next) {
             if(v->expr_type != A1TC_UNIVERVAL) continue;
@@ -3053,37 +3097,43 @@ emit_custom_xer_decoder(arg_t *arg, asn1p_expr_t *expr) {
         INDENT(-1);
         OUT("memset(st->buf, 0, st->size);\n");
         OUT("st->bits_unused = (int)((8 - ((max_bit + 1) %% 8)) %% 8);\n");
-        OUT("while(p < end) {\n");
-        INDENT(+1);
-        OUT("const char *start;\n");
-        OUT("int matched = 0;\n");
-        OUT("while(p < end && (*p == 9 || *p == 10 || *p == 13 || *p == 32)) p++;\n");
-        OUT("if(p == end) break;\n");
-        OUT("start = p;\n");
-        OUT("while(p < end && *p != 9 && *p != 10 && *p != 13 && *p != 32) p++;\n");
-        TQ_FOR(v, &(expr->members), next) {
-            const char *wire_name;
-            long bit;
-            if(v->expr_type != A1TC_UNIVERVAL) continue;
-            wire_name = v->encoding_control.replacement
-                ? v->encoding_control.replacement : v->Identifier;
-            bit = (long)v->value->value.v_integer;
-            OUT("if(!matched && (size_t)(p - start) == %ld\n",
-                (long)strlen(wire_name));
+        if(has_named_bits) {
+            OUT("while(p < end) {\n");
             INDENT(+1);
-            OUT("&& memcmp(start, \"%s\", %ld) == 0) {\n",
-                wire_name, (long)strlen(wire_name));
-            OUT("st->buf[%ld] |= 0x%02x;\n",
-                bit / 8, 0x80 >> (bit % 8));
-            OUT("matched = 1;\n");
+            OUT("const char *start;\n");
+            OUT("int matched = 0;\n");
+            OUT("while(p < end && (*p == 9 || *p == 10 || *p == 13 || *p == 32)) p++;\n");
+            OUT("if(p == end) break;\n");
+            OUT("start = p;\n");
+            OUT("while(p < end && *p != 9 && *p != 10 && *p != 13 && *p != 32) p++;\n");
+            TQ_FOR(v, &(expr->members), next) {
+                const char *wire_name;
+                long bit;
+                if(v->expr_type != A1TC_UNIVERVAL) continue;
+                wire_name = v->encoding_control.replacement
+                    ? v->encoding_control.replacement : v->Identifier;
+                bit = (long)v->value->value.v_integer;
+                OUT("if(!matched && (size_t)(p - start) == %ld\n",
+                    (long)strlen(wire_name));
+                INDENT(+1);
+                OUT("&& memcmp(start, \"%s\", %ld) == 0) {\n",
+                    wire_name, (long)strlen(wire_name));
+                OUT("st->buf[%ld] |= 0x%02x;\n",
+                    bit / 8, 0x80 >> (bit % 8));
+                OUT("matched = 1;\n");
+                INDENT(-1);
+                OUT("}\n");
+            }
+            OUT("if(!matched) return XPBD_BROKEN_ENCODING;\n");
+            OUT("any = 1;\n");
             INDENT(-1);
             OUT("}\n");
+            OUT("return any ? XPBD_BODY_CONSUMED : XPBD_NOT_BODY_IGNORE;\n");
+        } else {
+            OUT("while(p < end && (*p == 9 || *p == 10 || *p == 13 || *p == 32)) p++;\n");
+            OUT("if(p < end) return XPBD_BROKEN_ENCODING;\n");
+            OUT("return XPBD_NOT_BODY_IGNORE;\n");
         }
-        OUT("if(!matched) return XPBD_BROKEN_ENCODING;\n");
-        OUT("any = 1;\n");
-        INDENT(-1);
-        OUT("}\n");
-        OUT("return any ? XPBD_BODY_CONSUMED : XPBD_NOT_BODY_IGNORE;\n");
         INDENT(-1);
         OUT("}\n");
         OUT("\n");
@@ -4288,11 +4338,26 @@ emit_default_bitstring_value(arg_t *arg, asn1p_value_t *v) {
 	OUT(" };\n");
 }
 
+/*
+ * Purpose: Emit inline DEFAULT callbacks for primitive ASN.1 members.
+ * Original source: The asn1c C code generator; storage selection follows
+ *                  asn1c_select_integer_storage().
+ * Version/date: 1.1, 2026-10-26.
+ * Parameters: arg is the generator context; expr is the member expression;
+ *             out selects descriptor references instead of definitions.
+ * Returns: One when a DEFAULT callback was emitted, zero when unsupported.
+ * Exceptions: None; generator output and allocation failures are handled by
+ *             the surrounding generator infrastructure.
+ * Responsible party: asn1c maintainers.
+ * History: Use the selected INTEGER storage for issue #591 DEFAULT callbacks.
+ * Example: INTEGER DEFAULT 1 with -finteger-native-type=uint64.
+ */
 static int
 try_inline_default(arg_t *arg, asn1p_expr_t *expr, int out) {
 	int save_target = arg->target->target;
 	asn1p_expr_type_e etype = expr_get_type(arg, expr);
 	int fits_long = 0;
+	char default_name[128];
 
 	switch(etype) {
 	case ASN_BASIC_BOOLEAN:
@@ -4305,21 +4370,29 @@ try_inline_default(arg_t *arg, asn1p_expr_t *expr, int out) {
 		    expr->marker.default_value->type != ATV_TRUE &&
 		    expr->marker.default_value->type != ATV_FALSE))
 			break;
-		if(!fits_long)
-			fits_long = asn1c_type_fits_long(arg, expr)!=FL_NOTFIT;
+		/* Keep negative literals in C identifiers without negating INT_MIN. */
+		if(asn1p_itoa_s(default_name, sizeof(default_name),
+		                  expr->marker.default_value->value.v_integer) < 0)
+			return 0;
+		if(default_name[0] == '-') default_name[0] = 'm';
+		/* INTEGER storage may remain INTEGER_t even when its value fits long. */
+		if(etype == ASN_BASIC_INTEGER)
+			fits_long = asn1c_select_integer_storage(arg, expr) != AISK_INTEGER_T;
+		else if(!fits_long)
+			fits_long = asn1c_type_fits_long(arg, expr) != FL_NOTFIT;
 		if(fits_long && !expr->marker.default_value->value.v_integer)
 			expr->marker.flags &= ~EM_INDIRECT;
 		if(!out) {
             if(C99_MODE) OUT(".default_value_cmp = ");
 			OUT("&asn_DFL_%d_cmp_%s,",
 				expr->_type_unique_index,
-				asn1p_itoa(expr->marker.default_value->value.v_integer));
+				default_name);
             OUT("\t/* Compare DEFAULT %s */\n",
 				asn1p_itoa(expr->marker.default_value->value.v_integer));
             if(C99_MODE) OUT(".default_value_set = ");
 			OUT("&asn_DFL_%d_set_%s,",
 				expr->_type_unique_index,
-				asn1p_itoa(expr->marker.default_value->value.v_integer));
+				default_name);
             OUT("\t/* Set DEFAULT %s */\n",
 				asn1p_itoa(expr->marker.default_value->value.v_integer));
 			return 1;
@@ -4328,7 +4401,7 @@ try_inline_default(arg_t *arg, asn1p_expr_t *expr, int out) {
 
 		OUT("static int asn_DFL_%d_cmp_%s(const void *sptr) {\n",
 			expr->_type_unique_index,
-			asn1p_itoa(expr->marker.default_value->value.v_integer));
+			default_name);
 		INDENT(+1);
 		OUT("const %s *st = sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
 		OUT("\n");
@@ -4353,7 +4426,7 @@ try_inline_default(arg_t *arg, asn1p_expr_t *expr, int out) {
 
 		OUT("static int asn_DFL_%d_set_%s(void **sptr) {\n",
 			expr->_type_unique_index,
-			asn1p_itoa(expr->marker.default_value->value.v_integer));
+			default_name);
 		INDENT(+1);
 		OUT("%s *st = *sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
 		OUT("\n");
@@ -4888,14 +4961,15 @@ member_uses_concrete_descriptor(arg_t *arg, asn1p_expr_t *expr,
 /*
  * Purpose: Identify member descriptors that need a unique suffix.
  * Original source: asn1c C backend member descriptor selection.
- * Version: 2026-10-22.
+ * Version: 2026-10-25.
  * Parameters: arg is the generation context; expr is the member; opt_ioc is its IOC table;
  *             fits_unsigned_integer indicates inline native INTEGER specifics.
  * Returns: Nonzero when the descriptor property applies, zero otherwise.
  * Errors: None; arguments follow the internal compiler contract.
  * Responsible party: asn1c maintainers.
- * History: Extracted unchanged selection logic during issue #586.
- * Example: An embedded OPEN TYPE uses a concrete suffixed descriptor.
+ * History: Extracted during issue #586; issue #590 added native INTEGER
+ *          members to the embedded descriptor suffix rule.
+ * Example: A constrained inline INTEGER stored as uint64_t uses its suffixed descriptor.
  */
 static int
 member_uses_descriptor_suffix(arg_t *arg, asn1p_expr_t *expr,
@@ -4908,6 +4982,7 @@ member_uses_descriptor_suffix(arg_t *arg, asn1p_expr_t *expr,
 		   || (expr->parent_expr
 		       && ((expr->expr_type & ASN_CONSTR_MASK)
 		           || expr->expr_type == ASN_BASIC_ENUMERATED
+		           || fits_unsigned_integer
 		           || (expr->expr_type == ASN_BASIC_BIT_STRING
 		               && expr_elements_count(arg, expr))))
 		   || (expr->_anonymous_type && fits_unsigned_integer));
