@@ -7,13 +7,12 @@
 
 struct SpecializedContent_21P0;
 struct SpecializedContent_21P1;
-struct SpecializedContent;
 
 /*** <<< TYPE-DECLS [Message] >>> ***/
 
 typedef struct Message {
-	struct SpecializedContent	*content13;
-	struct SpecializedContent	*content42;
+	struct SpecializedContent_21P0	*content13;
+	struct SpecializedContent_21P1	*content42;
 	
 	/* Context for parsing across buffer boundaries */
 	asn_struct_ctx_t _asn_ctx;
