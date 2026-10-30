@@ -314,6 +314,16 @@ asn1c_disambiguate_generated_filename(const char *name) {
     return name;
 }
 
+/*
+ * Purpose: select the generated C name for an ASN.1 type and naming format.
+ * Source: asn1c type naming logic; issue #592 and PR #593 refine struct tags.
+ * Version: 2026-10-29. Author/responsible party: asn1c maintainers.
+ * Inputs: arg is the compiler context; expr is the type; _format selects the name form.
+ * Return: a borrowed generated name, or NULL if lookup or allocation fails.
+ * Exceptions: none; allocation failure is reported through NULL.
+ * History: numbered instance and alias recursion-safe names corrected for issue #592.
+ * Example: asn1c_type_name(arg, expr, TNF_RSAFE) yields "struct Foo".
+ */
 const char *
 asn1c_type_name(arg_t *arg, asn1p_expr_t *expr, enum tnfmt _format) {
 	asn1p_expr_t *exprid = 0;
@@ -401,7 +411,7 @@ asn1c_type_name(arg_t *arg, asn1p_expr_t *expr, enum tnfmt _format) {
 
 		if(_format == TNF_RSAFE && terminal && !(terminal->expr_type & ASN_CONSTR_MASK)
 		 && !(exprid && (exprid->expr_type & ASN_CONSTR_MASK))) {
-			/* an alias (A ::= B), also a numbered instance that is one: the struct that exists is the final constructed type's */
+			/* An alias, including a numbered one, uses the final constructed type's struct. */
 			asn1p_expr_t *fin = WITH_MODULE_NAMESPACE(expr->module, expr_ns,
 				asn1f_find_terminal_type_ex(arg->asn, expr_ns, expr));
 			if(fin && (fin->expr_type & ASN_CONSTR_MASK)) {
@@ -559,10 +569,28 @@ asn1c_type_name(arg_t *arg, asn1p_expr_t *expr, enum tnfmt _format) {
 				exprid?"t":typename, exprid?0:"t", (char*)0);
 	case TNF_RSAFE:	/* Recursion-safe type */
 		if(exprid) {
-			/* A specialization or clashing name: the struct tag carries the same suffix as its definition */
-			static char rsafe_name[512];
+			/* state variable. Retain the dynamically sized struct tag until the next call. */
+			static char *rsafe_name;
+			/* state variable. Track the allocated size of the struct tag. */
+			static size_t rsafe_capacity;
 			const char *id = asn1c_make_identifier(stdname ? 0 : AMI_USE_PREFIX, exprid, (char*)0);
-			snprintf(rsafe_name, sizeof rsafe_name, "struct %s", id ? id : "");
+			size_t id_len;
+			size_t needed;
+			char *new_name;
+
+			if(!id) return NULL;
+			id_len = strlen(id);
+			if(id_len > SIZE_MAX - sizeof("struct ")) return NULL;
+			needed = id_len + sizeof("struct ");
+			if(needed > rsafe_capacity) {
+				new_name = realloc(rsafe_name, needed);
+				if(!new_name) return NULL;
+				rsafe_name = new_name;
+				rsafe_capacity = needed;
+			}
+			/* Preserve the full generated identifier, including any numbered suffix. */
+			memcpy(rsafe_name, "struct ", sizeof("struct ") - 1);
+			memcpy(rsafe_name + sizeof("struct ") - 1, id, id_len + 1);
 			return rsafe_name;
 		}
 		/*

@@ -30,3 +30,7 @@ intentional output-format change, then review the resulting diff before
 committing the updated fixtures. The 2026-10-23 fixture refresh records
 input-wide generated-symbol indexes and earlier forward declarations for
 parameterized aliases.
+
+check-issue-592.sh compiles headers from issue-592/StructTags.asn1 and checks
+that numbered parameterized instances, aliases, and prefixed types use the
+defined struct tags. It also checks that a long generated tag is not truncated.
