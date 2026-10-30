@@ -1,5 +1,5 @@
 {
-  "suite": "generated Rust stage-one primitive UPER and CER slice",
+  "suite": "generated Rust stage-one primitive UPER, CER, and BER/DER slice",
   "scope": "Only the listed nonextensible primitive subset is qualified.",
   "cases": [
     {
@@ -73,13 +73,27 @@
       "directions": ["encode", "strict decode"],
       "status": "tested_with_live_C_comparison",
       "evidence": "conformance.rs; c_reference.c; asn1c-runtime unit tests"
+    },
+    {
+      "asn1_type": "BOOLEAN, NULL, INTEGER",
+      "feature": "universal primitive tags; INTEGER bounded signed i64",
+      "codec": "BER decode / DER encode",
+      "variants": [
+        "definite lengths",
+        "canonical DER output",
+        "BER prefix consumption",
+        "BOOLEAN content is exactly one octet"
+      ],
+      "directions": ["BER decode", "DER encode"],
+      "status": "tested_primitive_subset",
+      "evidence": "conformance.rs; asn1c-runtime unit tests"
     }
   ],
   "not_yet_implemented_by_this_Rust_slice": [
     {
-      "family": "BER/DER",
+      "family": "BER/DER outside the primitive slice",
       "status": "not_implemented",
-      "note": "No generated Rust encoder or decoder is qualified for these variants."
+      "note": "Constructed, tagged, and other primitive types are not qualified."
     },
     {
       "family": "APER",
@@ -139,7 +153,7 @@
     ]
   },
   "observed_counts": {
-    "generated_rust_test_functions": 10,
+    "generated_rust_test_functions": 12,
     "live_c_rust_vectors_each_direction": 8,
     "unsupported_target_or_schema_cases": 23,
     "single_octet_mutation_inputs": 768,

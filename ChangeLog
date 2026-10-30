@@ -1,4 +1,11 @@
 Changes since v1.5.3:
+	* Extended the generated Rust primitive slice with opt-in BER decoding and
+	  DER encoding for BOOLEAN, NULL, and bounded i64 INTEGER. BER accepts
+	  definite long-form lengths and reports prefix consumption; DER emits
+	  canonical primitive TLVs. Added malformed-input, resource-limit, and
+	  generated-code regression coverage. The Rust default remains UPER/CER;
+	  broader ASN.1 types and codec families remain pending. Rust CI now runs
+	  pedantic and nursery Clippy lints with warnings denied.
 	* Import standard ASN.1 modules in a deterministic order, keeping the
 	  built-in EXTERNAL module first. Directory iteration order had shifted
 	  generated descriptor indexes and failed check-parsing.sh in PR #593 CI.

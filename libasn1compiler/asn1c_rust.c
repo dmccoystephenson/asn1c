@@ -17,10 +17,11 @@
 #define rust_getpid() getpid()
 #endif
 
-/* The first Rust slice supports Boolean, NULL, and bounded INTEGER codecs. */
+/* The Rust primitive slice supports Boolean, NULL, and bounded INTEGER. */
 #define RUST_CODEC_UPER ((uint64_t)A1C_GEN_UPER)
+#define RUST_CODEC_BER ((uint64_t)A1C_GEN_BER)
 #define RUST_CODEC_CER ((uint64_t)A1C_GEN_CER)
-#define RUST_CODEC_MASK (RUST_CODEC_UPER | RUST_CODEC_CER)
+#define RUST_CODEC_MASK (RUST_CODEC_UPER | RUST_CODEC_BER | RUST_CODEC_CER)
 #define RUST_CONSTRAINT_DEPTH_LIMIT 128
 #define RUST_IDENTIFIER_LIMIT 80
 #define RUST_MANIFEST_LIMIT (1024 * 1024)
@@ -64,8 +65,11 @@ static int rust_write_module(FILE *, asn1p_module_t *, uint64_t);
 static int rust_write_module_file(asn1p_module_t *, const char *, uint64_t);
 static int rust_write_type(FILE *, asn1p_module_t *, asn1p_expr_t *, uint64_t);
 static int rust_write_boolean(FILE *, const char *, uint64_t);
+static int rust_write_boolean_ber(FILE *);
 static int rust_write_null(FILE *, const char *, uint64_t);
+static int rust_write_null_ber(FILE *);
 static int rust_write_integer(FILE *, const char *, int64_t, int64_t, uint64_t);
+static int rust_write_integer_ber(FILE *, const char *, const char *);
 static int rust_write_method_doc(FILE *, const char *, const char *,
                                  const char *, const char *, const char *);
 static int rust_write_manifest(asn1p_t *, const char *);
@@ -103,7 +107,7 @@ asn1c_rust_compile(asn1p_t *asn, const char *runtime_dir,
         return -1;
     }
     if(!codecs || (codecs & ~RUST_CODEC_MASK)) {
-        fprintf(stderr, "asn1c: Rust backend supports UPER and CER only\n");
+        fprintf(stderr, "asn1c: Rust backend supports UPER, BER, and CER only\n");
         return -1;
     }
     if(rust_check_tree(asn)) return -1;
@@ -945,13 +949,15 @@ rust_write_boolean(FILE *stream, const char *name, uint64_t codecs) {
             "`value` is the BOOLEAN payload.", "Returns the new value.",
             "This constructor cannot fail.", "`let value = Type::new(true);"))
         return -1;
-    if(fputs("    pub const fn new(value: bool) -> Self { Self(value) }\n",
+    if(fputs("    #[must_use]\n"
+             "    pub const fn new(value: bool) -> Self { Self(value) }\n",
              stream) == EOF) return -1;
     if(rust_write_method_doc(stream, "Return the BOOLEAN payload.",
             "`self` is the value to inspect.", "Returns its Boolean payload.",
             "This accessor cannot fail.", "`let bit = value.value();")) return -1;
-    if(fputs("    pub const fn value(&self) -> bool { self.0 }\n", stream) == EOF)
-        return -1;
+    if(fputs("    #[must_use]\n"
+             "    pub const fn value(&self) -> bool { self.0 }\n", stream)
+       == EOF) return -1;
     if(codecs & RUST_CODEC_UPER) {
         /* Emit both UPER directions only when the caller selected UPER. */
         if(rust_write_method_doc(stream, "Encode this value using UPER.",
@@ -1007,7 +1013,47 @@ rust_write_boolean(FILE *stream, const char *name, uint64_t codecs) {
                  stream) == EOF)
             return -1;
     }
+    if((codecs & RUST_CODEC_BER) && rust_write_boolean_ber(stream)) return -1;
     if(fputs("}\n\n", stream) == EOF) return -1;
+    return 0;
+}
+
+/*
+ * Emit the BOOLEAN DER encoder and BER prefix decoder methods.
+ * Parameters: stream receives Rust source. Returns zero or -1. Original
+ * source: new Rust backend. Version/date: 0.1.0, 2026-10-30. Responsible
+ * party: asn1c maintainers. History: extracted to keep emitter complexity
+ * bounded. Example: rust_write_boolean_ber(stream) emits both methods.
+ */
+static int
+rust_write_boolean_ber(FILE *stream) {
+    if(rust_write_method_doc(stream, "Encode this value using DER.",
+            "`self` is the value; `limits` bounds output and work.",
+            "Returns the complete canonical BOOLEAN TLV.",
+            "Returns a runtime error if a configured limit is exceeded.",
+            "`let encoded = value.encode_der(&Default::default())?;"))
+        return -1;
+    if(fputs("    pub fn encode_der(&self, limits: &::asn1c_runtime::Limits) ->\n"
+             "        ::core::result::Result<::asn1c_runtime::Encoded, "
+             "::asn1c_runtime::Error> {\n"
+             "        ::asn1c_runtime::encode_boolean_der(self.0, limits)\n"
+             "    }\n", stream) == EOF)
+        return -1;
+    if(rust_write_method_doc(stream,
+            "Decode one BER BOOLEAN TLV and report prefix consumption.",
+            "`input` is the encoded prefix; `limits` bounds input and work.",
+            "Returns the value and consumed bit and byte counts.",
+            "Returns an error for truncation, malformed input, or BOOLEAN "
+            "content not exactly one octet.",
+            "`let decoded = Type::decode_ber(input, &Default::default())?;"))
+        return -1;
+    if(fputs("    pub fn decode_ber(input: &[u8], limits: &::asn1c_runtime::Limits) ->\n"
+             "        ::core::result::Result<::asn1c_runtime::Decoded<Self>, "
+             "::asn1c_runtime::Error> {\n"
+             "        ::asn1c_runtime::decode_boolean_ber(input, limits)\n"
+             "            .map(|decoded| decoded.map(Self))\n    }\n",
+             stream) == EOF)
+        return -1;
     return 0;
 }
 
@@ -1081,7 +1127,46 @@ rust_write_null(FILE *stream, const char *name, uint64_t codecs) {
                  stream) == EOF)
             return -1;
     }
+    if((codecs & RUST_CODEC_BER) && rust_write_null_ber(stream)) return -1;
     if(fputs("}\n\n", stream) == EOF) return -1;
+    return 0;
+}
+
+/*
+ * Emit the NULL DER encoder and BER prefix decoder methods.
+ * Parameters: stream receives Rust source. Returns zero or -1. Original
+ * source: new Rust backend. Version/date: 0.1.0, 2026-10-30. Responsible
+ * party: asn1c maintainers. History: extracted to keep emitter complexity
+ * bounded. Example: rust_write_null_ber(stream) emits both methods.
+ */
+static int
+rust_write_null_ber(FILE *stream) {
+    if(rust_write_method_doc(stream, "Encode this NULL value using DER.",
+            "`self` is the NULL value; `limits` bounds output and work.",
+            "Returns the complete canonical NULL TLV.",
+            "Returns a runtime error if a configured limit is exceeded.",
+            "`let encoded = value.encode_der(&Default::default())?;"))
+        return -1;
+    if(fputs("    pub fn encode_der(&self, limits: &::asn1c_runtime::Limits) ->\n"
+             "        ::core::result::Result<::asn1c_runtime::Encoded, "
+             "::asn1c_runtime::Error> {\n"
+             "        ::asn1c_runtime::encode_null_der(limits)\n"
+             "    }\n", stream) == EOF)
+        return -1;
+    if(rust_write_method_doc(stream,
+            "Decode one BER NULL TLV and report prefix consumption.",
+            "`input` is the encoded prefix; `limits` bounds input and work.",
+            "Returns the value and consumed bit and byte counts.",
+            "Returns an error for truncated, malformed, or over-limit input.",
+            "`let decoded = Type::decode_ber(input, &Default::default())?;"))
+        return -1;
+    if(fputs("    pub fn decode_ber(input: &[u8], limits: &::asn1c_runtime::Limits) ->\n"
+             "        ::core::result::Result<::asn1c_runtime::Decoded<Self>, "
+             "::asn1c_runtime::Error> {\n"
+             "        ::asn1c_runtime::decode_null_ber(input, limits)\n"
+             "            .map(|decoded| decoded.map(|()| Self))\n    }\n",
+             stream) == EOF)
+        return -1;
     return 0;
 }
 
@@ -1098,8 +1183,10 @@ static int
 rust_write_integer(FILE *stream, const char *name, int64_t lower,
                    int64_t upper, uint64_t codecs) {
     char low[64], high[64];
-    if(rust_format_bound(low, sizeof(low), lower)
-       || rust_format_bound(high, sizeof(high), upper)) return -1;
+    int bounds_error = rust_format_bound(low, sizeof(low), lower);
+    /* Format both endpoints before checking the combined error status. */
+    bounds_error |= rust_format_bound(high, sizeof(high), upper);
+    if(bounds_error) return -1;
     if(fprintf(stream,
         "/// Inclusive ASN.1 INTEGER bounds are `%s..=%s`.\n"
         "#[derive(Clone, Copy, Debug, Eq, PartialEq)]\n"
@@ -1121,8 +1208,9 @@ rust_write_integer(FILE *stream, const char *name, int64_t lower,
     if(rust_write_method_doc(stream, "Return the INTEGER payload.",
             "`self` is the value to inspect.", "Returns the signed integer payload.",
             "This accessor cannot fail.", "`let number = value.value();")) return -1;
-    if(fputs("    pub const fn value(&self) -> i64 { self.0 }\n", stream) == EOF)
-        return -1;
+    if(fputs("    #[must_use]\n"
+             "    pub const fn value(&self) -> i64 { self.0 }\n", stream)
+       == EOF) return -1;
     if(codecs & RUST_CODEC_UPER) {
         /* Emit both UPER directions only when the caller selected UPER. */
         if(rust_write_method_doc(stream, "Encode this value using UPER.",
@@ -1181,8 +1269,51 @@ rust_write_integer(FILE *stream, const char *name, int64_t lower,
             "            .map(|decoded| decoded.map(Self))\n    }\n", low, high) < 0)
             return -1;
     }
+    if((codecs & RUST_CODEC_BER)
+       && rust_write_integer_ber(stream, low, high)) return -1;
     if(fputs("}\n\n", stream) == EOF) return -1;
-    return ferror(stream) ? -1 : 0;
+    return 0;
+}
+
+/*
+ * Emit the bounded INTEGER DER encoder and BER prefix decoder methods.
+ * Parameters: stream receives Rust source; low and high are Rust bound
+ * expressions. Returns zero or -1. Original source: new Rust backend.
+ * Version/date: 0.1.0, 2026-10-30. Responsible party: asn1c maintainers.
+ * History: extracted to keep emitter complexity bounded. Example:
+ * rust_write_integer_ber(stream, "-10", "10").
+ */
+static int
+rust_write_integer_ber(FILE *stream, const char *low, const char *high) {
+    if(rust_write_method_doc(stream, "Encode this value using DER.",
+            "`self` is the value; `limits` bounds output and work.",
+            "Returns the complete minimal signed INTEGER TLV.",
+            "Returns a runtime error if a configured limit is exceeded.",
+            "`let encoded = value.encode_der(&Default::default())?;"))
+        return -1;
+    if(fprintf(stream,
+        "    pub fn encode_der(&self, limits: &::asn1c_runtime::Limits) ->\n"
+        "        ::core::result::Result<::asn1c_runtime::Encoded, "
+        "::asn1c_runtime::Error> {\n"
+        "        ::asn1c_runtime::encode_integer_der(self.0, %s, %s, limits)\n"
+        "    }\n", low, high) < 0)
+        return -1;
+    if(rust_write_method_doc(stream,
+            "Decode one BER INTEGER TLV and report prefix consumption.",
+            "`input` is the encoded prefix; `limits` bounds input and work.",
+            "Returns the value and consumed bit and byte counts.",
+            "Returns an error for truncated, malformed, out-of-range, or "
+            "over-limit input.",
+            "`let decoded = Type::decode_ber(input, &Default::default())?;"))
+        return -1;
+    if(fprintf(stream,
+        "    pub fn decode_ber(input: &[u8], limits: &::asn1c_runtime::Limits) ->\n"
+        "        ::core::result::Result<::asn1c_runtime::Decoded<Self>, "
+        "::asn1c_runtime::Error> {\n"
+        "        ::asn1c_runtime::decode_integer_ber(input, %s, %s, limits)\n"
+        "            .map(|decoded| decoded.map(Self))\n    }\n", low, high) < 0)
+        return -1;
+    return 0;
 }
 
 /*
@@ -1200,13 +1331,13 @@ rust_write_method_doc(FILE *stream, const char *purpose, const char *inputs,
     return fprintf(stream,
         "    /// %s\n    ///\n    /// # Parameters\n    /// %s\n"
         "    ///\n    /// # Returns\n    /// %s\n    ///\n"
-        "    /// # Errors and exceptions\n    /// %s\n    ///\n"
+        "    /// # Errors\n    /// %s\n    ///\n"
         "    /// # Source, version, history, and example\n"
         "    /// Original source: generated from the ASN.1 fixed tree.\n"
         "    /// Version/date: 0.1.0, 2026-10-11.\n"
         "    /// Responsible party: asn1c maintainers.\n"
         "    /// History: emitted by the codec-aware Rust backend.\n"
-        "    /// Example: %s\n",
+        "    /// Example: %s`\n",
         purpose, inputs, returns, errors, example) < 0 ? -1 : 0;
 }
 
