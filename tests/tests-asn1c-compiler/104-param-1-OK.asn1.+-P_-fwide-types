@@ -155,13 +155,12 @@ asn_TYPE_descriptor_t asn_DEF_Collection_16P1 = {
 
 struct Collection_16P0;
 struct Collection_16P1;
-struct Collection;
 
 /*** <<< TYPE-DECLS [Bunch] >>> ***/
 
 typedef struct Bunch {
-	struct Collection	*field_REAL;
-	struct Collection	*field_IA5String;
+	struct Collection_16P0	*field_REAL;
+	struct Collection_16P1	*field_IA5String;
 	
 	/* Context for parsing across buffer boundaries */
 	asn_struct_ctx_t _asn_ctx;

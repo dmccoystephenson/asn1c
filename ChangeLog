@@ -1,4 +1,12 @@
 Changes since v1.5.3:
+	* Import standard ASN.1 modules in a deterministic order, keeping the
+	  built-in EXTERNAL module first. Directory iteration order had shifted
+	  generated descriptor indexes and failed check-parsing.sh in PR #593 CI.
+	  Added a regression using opposite file creation orders.
+	* Fixed issue #592: recursion-safe pointer members now name the defined
+	  struct for numbered parameterized instances and constructed-type aliases.
+	  Grow the generated tag buffer to fit long identifiers without truncation.
+	  Added generated-header compile and long-name regressions.
 	* Fixed issue #591: generate INTEGER DEFAULT setters and comparators
 	  according to the actual selected C storage type. Unconstrained INTEGER
 	  members in unsigned native modes now use INTEGER_t conversion callbacks

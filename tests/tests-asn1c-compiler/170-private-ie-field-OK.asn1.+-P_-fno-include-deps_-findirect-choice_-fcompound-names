@@ -794,12 +794,11 @@ asn_TYPE_descriptor_t asn_DEF_PrivateIE_Container_48P0 = {
 /*** <<< FWD-DECLS [PrivateMessage] >>> ***/
 
 struct PrivateIE_Container_48P0;
-struct PrivateIE_Container;
 
 /*** <<< TYPE-DECLS [PrivateMessage] >>> ***/
 
 typedef struct PrivateMessage {
-	struct PrivateIE_Container	*privateIEs;	/* OPTIONAL */
+	struct PrivateIE_Container_48P0	*privateIEs;	/* OPTIONAL */
 	
 	/* Context for parsing across buffer boundaries */
 	asn_struct_ctx_t _asn_ctx;
