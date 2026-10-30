@@ -44,6 +44,7 @@ TESTS += check-JER-multi-pdu.sh
 TESTS += check-BER-retag.sh
 TESTS += check-issue-588.sh
 TESTS += check-issue-587.sh
+TESTS += check-integer-native-dist.sh
 
 CLEANFILES = Makefile.am.* *.[acho] check-*.log check-*.trs
 
