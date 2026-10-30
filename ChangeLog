@@ -1,4 +1,9 @@
 Changes since v1.5.3:
+	* Ship the issue-590/591 inputs of tests/tests-integer-native/ in
+	  `make dist` (they were missing from the explicit EXTRA_DIST list, so
+	  run.sh failed from a release tarball). Added check-integer-native-dist.sh,
+	  which fails `make check` when that list and the directory disagree
+	  (fork issue #53).
 	* Load skeletons/standard-modules/*.asn1 in a fixed order (descending
 	  file name) instead of readdir(3) order, which varies by filesystem.
 	  The load order sets the "_N" suffix of standard-module descriptors
