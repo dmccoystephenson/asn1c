@@ -250,15 +250,14 @@ typedef enum TestChoice_PR {
 
 struct TestType_16P0;
 struct TestType_16P1;
-struct TestType;
 
 /*** <<< TYPE-DECLS [TestChoice] >>> ***/
 
 typedef struct TestChoice {
 	TestChoice_PR present;
 	union TestChoice_u {
-		struct TestType	*type1;
-		struct TestType	*type2;
+		struct TestType_16P0	*type1;
+		struct TestType_16P1	*type2;
 	} choice;
 	
 	/* Context for parsing across buffer boundaries */
@@ -587,15 +586,14 @@ typedef enum AutoChoice_PR {
 
 struct AutoType_34P0;
 struct AutoType_34P1;
-struct AutoType;
 
 /*** <<< TYPE-DECLS [AutoChoice] >>> ***/
 
 typedef struct AutoChoice {
 	AutoChoice_PR present;
 	union AutoChoice_u {
-		struct AutoType	*type1;
-		struct AutoType	*type2;
+		struct AutoType_34P0	*type1;
+		struct AutoType_34P1	*type2;
 	} choice;
 	
 	/* Context for parsing across buffer boundaries */

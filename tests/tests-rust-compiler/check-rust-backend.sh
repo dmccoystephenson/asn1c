@@ -77,6 +77,11 @@ done
 grep -F 'pub fn encode_cer' "$rust_out/src/first_slice.rs" >/dev/null
 grep -F 'pub fn encode_uper' "$rust_out/src/first_slice.rs" >/dev/null
 grep -F 'pub fn decode_cer' "$rust_out/src/first_slice.rs" >/dev/null
+if grep -E 'pub fn (encode_der|decode_ber)' \
+    "$rust_out/src/first_slice.rs" >/dev/null; then
+    echo "FAIL: default Rust selection unexpectedly generated BER/DER methods"
+    exit 1
+fi
 cp -R "$rust_out" "$test_tmp/first-generation"
 "$asn1c_bin" --rust -S "$skeletons" -D "$rust_out" \
     "$test_srcdir/FirstSlice.asn1"
@@ -180,14 +185,39 @@ for selector in default explicit; do
     fi
 done
 
-# BER selection does not alter the separate Rust CER codec mask.
+# Disabling BER removes its paired DER/BER methods and leaves CER selected.
 cer_without_ber="$test_tmp/cer-without-ber"
 "$asn1c_bin" --rust -no-gen-BER -no-gen-UPER -S "$skeletons" \
     -D "$cer_without_ber" "$test_srcdir/FirstSlice.asn1"
 grep -F 'pub fn encode_cer' "$cer_without_ber/src/first_slice.rs" >/dev/null
+if grep -E 'pub fn (encode_der|decode_ber)' \
+    "$cer_without_ber/src/first_slice.rs" >/dev/null; then
+    echo "FAIL: -no-gen-BER retained generated BER/DER methods"
+    exit 1
+fi
 if grep -E 'pub fn (encode|decode)_uper' \
     "$cer_without_ber/src/first_slice.rs" >/dev/null; then
-    echo "FAIL: --no-gen-BER changed the independent Rust codec mask"
+    echo "FAIL: disabled UPER remained in the generated codec mask"
+    exit 1
+fi
+
+# BER-only selection emits the paired DER encoder and BER decoder per type.
+ber_only="$test_tmp/ber-only"
+"$asn1c_bin" --rust -gen-BER -no-gen-UPER -no-gen-CER -S "$skeletons" \
+    -D "$ber_only" "$test_srcdir/FirstSlice.asn1"
+ber_module="$ber_only/src/first_slice.rs"
+grep -F 'pub fn encode_der' "$ber_module" >/dev/null
+grep -F 'pub fn decode_ber' "$ber_module" >/dev/null
+if grep -E 'pub fn (encode|decode)_(uper|cer)' "$ber_module" >/dev/null; then
+    echo "FAIL: BER-only selection generated UPER or CER methods"
+    exit 1
+fi
+if ! (cd "$ber_only" && \
+    CARGO_TARGET_DIR="$test_tmp/ber-only-cargo-target" \
+    cargo check --offline --manifest-path Cargo.toml) \
+    >"$test_tmp/ber-only-cargo-check.log" 2>&1; then
+    cat "$test_tmp/ber-only-cargo-check.log"
+    echo "FAIL: generated BER-only Rust crate did not compile"
     exit 1
 fi
 
@@ -206,7 +236,7 @@ if grep -F 'pub fn decode_cer' "$uper_only/src/first_slice.rs" >/dev/null; then
 fi
 
 # Unsupported codec requests must fail without publishing any Rust output.
-for codec in BER APER OER XER JER CBOR; do
+for codec in APER OER XER JER CBOR; do
     rejected_out="$test_tmp/rejected-$codec"
     if "$asn1c_bin" --rust "-gen-$codec" -S "$skeletons" \
         -D "$rejected_out" "$test_srcdir/FirstSlice.asn1" \
@@ -466,13 +496,20 @@ mkdir "$test_tmp/c-vectors" "$test_tmp/rust-vectors"
 "$test_tmp/c-reference" "$test_tmp/c-vectors"
 
 # Keep Cargo's build artifacts outside both the repository and generated crate.
-mkdir "$rust_out/tests"
-cp "$test_srcdir/conformance.rs" "$rust_out/tests/conformance.rs"
-(cd "$rust_out" && \
+rust_ber_out="$test_tmp/generated-rust-ber"
+"$asn1c_bin" --rust -gen-BER -S "$skeletons" -D "$rust_ber_out" \
+    "$test_srcdir/FirstSlice.asn1"
+mkdir "$rust_ber_out/tests"
+cp "$test_srcdir/conformance.rs" "$rust_ber_out/tests/conformance.rs"
+(cd "$rust_ber_out" && \
     ASN1C_C_VECTORS="$test_tmp/c-vectors" \
     ASN1C_RUST_VECTORS="$test_tmp/rust-vectors" \
     CARGO_TARGET_DIR="$test_tmp/cargo-target" \
     cargo test --offline --manifest-path Cargo.toml)
+(cd "$rust_ber_out" && \
+    CARGO_TARGET_DIR="$test_tmp/cargo-target" \
+    cargo clippy --offline --all-targets --all-features -- \
+    -W clippy::pedantic -W clippy::nursery -D warnings)
 "$test_tmp/c-reference" --decode-dir "$test_tmp/rust-vectors"
 
-echo "PASS: generated Rust UPER/CER primitive slice"
+echo "PASS: generated Rust UPER/CER/BER-DER primitive slice"

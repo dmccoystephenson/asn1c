@@ -1,6 +1,6 @@
 # Rust code generation architecture
 
-**Status:** Implementation in progress; initial UPER and CER slices present
+**Status:** Implementation in progress; initial UPER, CER, and BER/DER slices present
 **Date:** 2026-10-11
 **Baseline:** `5a0ccf24ede9b176e8fd76861bf4855ed95f5105`
 **Scope:** An opt-in Rust target that reuses the C parser and fixer, emits a
@@ -71,11 +71,11 @@ with `cer_encode()`, and rejects input that is not byte-identical (`EBADF`).
 `ASN_DISABLE_CER_SUPPORT` disables the CER encoder and strict decoder; the
 decoder stub then fails with `ENOENT`. `ATS_BER` and `ATS_DER` stay permissive.
 
-The Rust backend currently adds `encode_cer` and strict `decode_cer` methods
-for BOOLEAN, NULL, and finite nonextensible INTEGER ranges fitting `i64`. Its
-`--rust` defaults to UPER and CER for these supported types. Other Rust schema
-forms and the remaining codec families are still outside the implemented
-slice.
+The Rust backend adds `encode_cer` and strict `decode_cer` methods for BOOLEAN,
+NULL, and finite nonextensible INTEGER ranges fitting `i64`. For those same
+types, `-gen-BER` adds `decode_ber` and `encode_der`. Its `--rust` defaults to
+UPER and CER. Other Rust schema forms and codec families remain outside the
+implemented slice.
 
 The example converter's baseline inputs are BER, OER, PER/UPER, APER, XER,
 JER, and CBOR; outputs are DER, OER, PER/UPER, APER, XER, JER, CBOR, text,
@@ -356,13 +356,13 @@ option parser; the option is recognized only before `--`. It cannot be used as
 the operand of `-D` or `-S`. Existing `-gen-*` spellings remain unchanged.
 
 Rust defaults independently to its qualified codecs. In the current slice,
-`--rust` alone selects UPER and CER. `-no-gen-UPER` selects CER-only output,
-while `-no-gen-CER` omits `encode_cer` and `decode_cer` and leaves UPER
-selected. Explicit requests for BER,
-DER, APER, OER, XER, JER, or CBOR fail before output is created. Disabling both
-UPER and CER or selecting an unsupported ASN.1 form also fails before output
-is published. As codecs are qualified, add them to the Rust default until it
-covers the current C codec set. The CLI keeps the C defaults unchanged.
+`--rust` alone selects UPER and CER. `-gen-BER` opts into BER decoding and DER
+encoding; there is no separate `-gen-DER` flag. `-no-gen-UPER` selects CER-only
+output unless BER was explicitly selected, while `-no-gen-CER` omits CER
+methods. Explicit requests for APER, OER, XER, JER, or CBOR fail before output
+is created. Disabling every supported codec or selecting an unsupported ASN.1
+form also fails before output is published. The CLI keeps the C defaults
+unchanged.
 
 Validate all flags and the complete schema before creating output files. An
 unsupported CLI combination is an `EX_USAGE` diagnostic; an unsupported
@@ -376,7 +376,7 @@ The current Rust option handling is:
 | Option family | Rust handling |
 | --- | --- |
 | `-D` | Selects the output directory; Rust defaults to `asn1c-rust`. |
-| `-gen-*`, `-no-gen-*` | UPER and CER are qualified for the primitive slice; other explicit requests fail. |
+| `-gen-*`, `-no-gen-*` | UPER and CER are default; BER/DER is opt-in for the primitive slice; other explicit requests fail. |
 | C storage/layout/output flags | Fail as incompatible with `--rust`. |
 | `-S` | Selects standard modules and resolves the matching runtime assets. |
 | `-P`, `-R`, C helper/example flags | Fail as incompatible with `--rust`. |
@@ -469,7 +469,7 @@ The initial UPER and CER slices do not complete the broader parity milestones.
    extensions, and recursion. Complete imports, aliases, parameterized
    specializations, constraints, PDU dependencies, IOC tables, and open types
    in bounded feature assignments.
-5. **M4, BER/DER and OER:** Add Rust BER decoding, DER encoding, BER TLV and
+5. **M4, BER/DER and OER:** Expand Rust BER decoding, DER encoding, BER TLV and
    length handling, constructed strings, canonical ordering, and OER
    encode/decode. Expand Rust CER encoding and strict decoding beyond the
    current slice as each supported type matrix is qualified. Keep the

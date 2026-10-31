@@ -1489,13 +1489,16 @@ asn_TYPE_descriptor_t asn_DEF_SampleList = {
 struct SampleContainer;
 struct AnotherContainer;
 struct SampleList;
+struct SampleIEs;
+struct AnotherIEs;
+struct ProtocolIE_Container_57P0;
 
 /*** <<< TYPE-DECLS [TestPDU] >>> ***/
 
 typedef struct TestPDU {
-	struct SampleContainer	*sampleContainer;
-	struct AnotherContainer	*anotherContainer;	/* OPTIONAL */
-	struct SampleList	*sampleList;
+	struct SampleIEs	*sampleContainer;
+	struct AnotherIEs	*anotherContainer;	/* OPTIONAL */
+	struct ProtocolIE_Container_57P0	*sampleList;
 	
 	/* Context for parsing across buffer boundaries */
 	asn_struct_ctx_t _asn_ctx;
