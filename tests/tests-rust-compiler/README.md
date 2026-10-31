@@ -1,7 +1,7 @@
 # Generated Rust compiler tests
 
 `check-rust-backend.sh` exercises the first generated Rust slice in a temporary
-directory. Its ten generated conformance cases cover BOOLEAN, NULL, bounded and
+directory. Its generated conformance cases cover BOOLEAN, NULL, bounded and
 singleton INTEGER, and a full `i64`-range INTEGER with UPER. It checks CER
 encodings for BOOLEAN, NULL, and bounded signed `i64` INTEGER against fixed
 vectors; selected `Count`, `Singleton`, and `SignBounds` values are also
@@ -11,11 +11,18 @@ passed to the generated C decoder for semantic checks, and the
 the generated Rust `decode_cer` and checks hostile rejections. The Rust crate
 builds offline with its copied runtime.
 
+The BER/DER extension adds generated `decode_ber` and `encode_der` methods for
+the same primitive types when `-gen-BER` is selected. Tests check canonical DER
+bytes against independent vectors and C-produced primitive TLVs, BER prefix
+consumption, noncanonical but accepted BER forms, malformed input, and bounds.
+The harness also generates a BER-only crate to check codec selection.
+
 The harness covers codec selection as well as wire behavior. The default Rust
 mask contains UPER and CER; `-gen-UPER` retains both, `-no-gen-UPER` selects
-CER-only output, and `-no-gen-CER` leaves UPER enabled. CER-only generation is
-also checked with explicit `-gen-CER -no-gen-UPER`, and `-no-gen-BER` does not
-change the independent Rust codec mask. Disabling both codecs and requesting
+CER-only output, and `-no-gen-CER` leaves UPER enabled. `-gen-BER` adds BER/DER
+methods and `-no-gen-BER` omits them. CER-only generation is
+also checked with explicit `-gen-CER -no-gen-UPER`; `-no-gen-BER` leaves CER
+selected. Disabling all supported codecs and requesting
 unsupported codecs are rejected before output publication. The generated
 dual-codec and CER-only APIs are checked to contain `decode_cer`, and the
 `-no-gen-CER` output is checked to omit it.

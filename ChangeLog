@@ -4,13 +4,26 @@ Changes since v1.5.3:
 	  run.sh failed from a release tarball). Added check-integer-native-dist.sh,
 	  which fails `make check` when that list and the directory disagree
 	  (fork issue #53).
-	* Load skeletons/standard-modules/*.asn1 in a fixed order (descending
-	  file name) instead of readdir(3) order, which varies by filesystem.
-	  The load order sets the "_N" suffix of standard-module descriptors
-	  such as EXTERNAL's inner "encoding"; the chosen order keeps the
-	  suffixes in the existing check-parsing.sh baselines. Fixes spurious
-	  distcheck failures where the extracted tree listed the files in the
-	  other order (fork issue #52).
+	* Load skeletons/standard-modules/*.asn1 in a fixed order instead of
+	  readdir(3) order, which varies by filesystem (fork issue #52). The
+	  fork's interim descending-name sort has been replaced by the upstream
+	  implementation below, which yields the same load order for the
+	  shipped modules (ASN1C-UsefulInformationObjectClasses first).
+	* Extended the generated Rust primitive slice with opt-in BER decoding and
+	  DER encoding for BOOLEAN, NULL, and bounded i64 INTEGER. BER accepts
+	  definite long-form lengths and reports prefix consumption; DER emits
+	  canonical primitive TLVs. Added malformed-input, resource-limit, and
+	  generated-code regression coverage. The Rust default remains UPER/CER;
+	  broader ASN.1 types and codec families remain pending. Rust CI now runs
+	  pedantic and nursery Clippy lints with warnings denied.
+	* Import standard ASN.1 modules in a deterministic order, keeping the
+	  built-in EXTERNAL module first. Directory iteration order had shifted
+	  generated descriptor indexes and failed check-parsing.sh in PR #593 CI.
+	  Added a regression using opposite file creation orders.
+	* Fixed issue #592: recursion-safe pointer members now name the defined
+	  struct for numbered parameterized instances and constructed-type aliases.
+	  Grow the generated tag buffer to fit long identifiers without truncation.
+	  Added generated-header compile and long-name regressions.
 	* Fixed issue #591: generate INTEGER DEFAULT setters and comparators
 	  according to the actual selected C storage type. Unconstrained INTEGER
 	  members in unsigned native modes now use INTEGER_t conversion callbacks
