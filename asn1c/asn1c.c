@@ -776,7 +776,9 @@ static int
 asn1c_validate_options(const asn1c_cli_options_t *options) {
     const uint64_t rust_supported =
         (uint64_t)A1C_GEN_UPER | (uint64_t)A1C_GEN_BER
-        | (uint64_t)A1C_GEN_CER;
+        | (uint64_t)A1C_GEN_CER | (uint64_t)A1C_GEN_APER
+        | (uint64_t)A1C_GEN_OER | (uint64_t)A1C_GEN_JER | (uint64_t)A1C_GEN_CBOR
+        | (uint64_t)A1C_GEN_XER;
     if(options->print_out) {
         if((options->printer_flags & APF_PRINT_CONSTRAINTS)
            && !options->fix_n_print) {
@@ -803,7 +805,7 @@ asn1c_validate_options(const asn1c_cli_options_t *options) {
         if(!options->rust_codec_flags
            || (options->rust_codec_flags & ~rust_supported)) {
             fprintf(stderr,
-                    "Error: --rust supports UPER, BER, and CER; select at least "
+                    "Error: --rust supports UPER, APER, OER, BER, CER, JER, CBOR, and XER; select at least "
                     "one supported codec and no other codec\n");
             return -1;
         }
@@ -990,24 +992,35 @@ asn1c_cli_options_destroy(asn1c_cli_options_t *options) {
 }
 
 /*
- * Import standard modules and run the ASN.1 fixer with CLI error policy.
+ * Import standard modules, bind module owners, and run the ASN.1 fixer.
  * Parameters: options contains fixer settings; asn is the parsed tree; result
  * receives EX_DATAERR for a nonfatal FATAL diagnostic allowed during -E -F.
  * Returns zero to continue or EX_DATAERR to stop. Original source: former main
  * tree-processing block. Version/date: 0.1.0, 2026-10-11. Responsible party:
  * asn1c maintainers. History: extracted to bound dispatch complexity. Example:
- * `asn1c_import_and_fix_tree(&options, tree, &result)`.
+ * `asn1c_import_and_fix_tree(&options, tree, &result)`. Rust automatically
+ * enables compound names in the fixer so distinct ASN.1 modules may define
+ * the same symbol; generated Rust module paths preserve each assignment's
+ * ownership. Module back-pointers are rebound after per-file trees merge.
+ * The C-only `-fcompound-names` option remains incompatible with `--rust`,
+ * and C invocations retain their selected fixer flags.
  */
 static int
 asn1c_import_and_fix_tree(asn1c_cli_options_t *options, asn1p_t *asn,
                           int *result) {
+    asn1p_module_t *module;
+    enum asn1f_flags fixer_flags = options->fixer_flags; /* Fixer policy state variable. */
     int fix_status;
     if(importStandardModules(asn, options->skeletons_dir)) {
         if(options->warnings_as_errors) return EX_DATAERR;
     } else {
         asn1f_use_standard_namespaces(asn);
     }
-    fix_status = asn1f_process(asn, options->fixer_flags, fixer_error_logger);
+    /* Per-file parse trees were merged; restore owners before fixer lookups. */
+    TQ_FOR(module, &asn->modules, mod_next) module->asn1p = asn;
+    /* Rust module paths disambiguate names, so its fixer may accept duplicates. */
+    if(options->rust_target) fixer_flags |= A1F_COMPOUND_NAMES;
+    fix_status = asn1f_process(asn, fixer_flags, fixer_error_logger);
     if(fix_status == -1 || (fix_status == 1 && options->warnings_as_errors))
         return EX_DATAERR;
     if(fixer_fatal_count) {
@@ -1333,7 +1346,8 @@ usage(const char *av0) {
 "ASN.1 Compiler, " VERSION "\n" COPYRIGHT
 "Usage: %s [options] file ...\n"
 "Options:\n"
-"  --rust                Generate Rust BOOLEAN, NULL, and bounded i64 INTEGER codecs (UPER/CER; opt-in BER/DER)\n"
+"  --rust                Generate Rust codecs for selected types and flat records\n"
+"                        (UPER/CER default; opt-in BER/DER, APER, OER, JER, CBOR, XER)\n"
 "  -E                    Run only the ASN.1 parser and print out the tree\n"
 "  -F                    During -E operation, also perform tree fixing\n"
 "\n"

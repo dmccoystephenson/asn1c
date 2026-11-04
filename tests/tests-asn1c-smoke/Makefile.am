@@ -12,6 +12,7 @@ TESTS += check-BOOLEAN.sh
 TESTS += check-BIT_STRING.sh
 TESTS += check-OBJECT_IDENTIFIER.sh
 TESTS += check-RELATIVE-OID.sh
+TESTS += check-smoke-build-jobs.sh
 TESTS += check-SEQUENCE_f_INTEGER.sh
 TESTS += check-CHOICE_f_INTEGER.sh
 TESTS += check-OCTET_STRING.sh
@@ -33,6 +34,9 @@ TESTS += check-design-note-paths.sh
 TESTS += check-getopt-case-labels.sh
 TESTS += check-example-rfc-citations.sh
 TESTS += check-APER-inline-constrained-ioc.sh
+TESTS += check-SET-open-type.sh
+TESTS += check-SET-ber-open.sh
+TESTS += check-explicit-enum-tags.sh
 TESTS += check-fprefix-link.sh
 TESTS += check-fprefix-anon-typedef.sh
 TESTS += check-CONTAINING.sh
@@ -45,13 +49,16 @@ TESTS += check-BER-retag.sh
 TESTS += check-issue-588.sh
 TESTS += check-issue-587.sh
 TESTS += check-integer-native-dist.sh
+TESTS += check-issue-607.sh
 
 CLEANFILES = Makefile.am.* *.[acho] check-*.log check-*.trs
 
 EXTRA_DIST = README $(srcdir)/check-*.sh $(srcdir)/data/fprefix-link.asn \
 	$(srcdir)/data/fprefix-anon-typedef.asn \
 	$(srcdir)/data/issue-588-template.asn1 $(srcdir)/data/issue-588-use.asn1 \
-	$(srcdir)/data/issue-587-template.asn1 $(srcdir)/data/issue-587-use.asn1
+	$(srcdir)/data/issue-587-template.asn1 $(srcdir)/data/issue-587-use.asn1 \
+	$(srcdir)/data/issue-607-xer.asn1 $(srcdir)/data/issue-607-xer.c \
+	$(srcdir)/data/explicit-enum-tags.asn1 $(srcdir)/data/explicit-enum-tags.c
 
 clean-local:
 	rm -rf test-*

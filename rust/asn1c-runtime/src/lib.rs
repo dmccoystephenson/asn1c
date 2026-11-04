@@ -1,6 +1,12 @@
-//! Safe, bounded UPER and CER primitives for generated ASN.1 Rust code.
+//! Safe, bounded primitive codecs for generated ASN.1 Rust code.
 //!
-//! This initial crate covers BOOLEAN, NULL, and bounded signed INTEGER values.
+//! In addition to a limited PER/OER/CER/DER/BER codec slice, this crate covers
+//! BOOLEAN, NULL, bounded and arbitrary-precision signed INTEGER, direct
+//! ENUMERATED and primitive CHOICE, OBJECT IDENTIFIER, RELATIVE-OID,
+//! direct character strings,
+//! fixed and bounded-size UPER
+//! strings, fixed or bounded JER strings, and direct CBOR primitives and opaque
+//! ANY values.
 //! It uses only the Rust standard library and applies caller-configurable input,
 //! output, and work limits before reading bits or allocating output storage.
 //!
@@ -14,6 +20,68 @@
 
 use std::fmt;
 
+/// Primitive Aligned Packed Encoding Rules (APER) codecs.
+pub mod aper;
+/// Checked BER parsing and DER/CER codecs for OIDs, strings, and ENUMERATED.
+pub mod ber;
+/// Bounded arbitrary-precision signed INTEGER type and BER/DER/CER codecs.
+pub mod big_integer;
+/// Bounded primitive and opaque CBOR codecs.
+pub mod cbor;
+/// Bounded primitive JSON Encoding Rules (JER) codecs.
+pub mod jer;
+/// Primitive Octet Encoding Rules (OER) codecs.
+pub mod oer;
+/// Composable UPER bit cursors with operation-wide resource accounting.
+pub mod uper_cursor;
+/// Bounded basic XER output for flat generated records.
+pub mod xer;
+
+pub use aper::{
+    decode_boolean_aper, decode_integer_aper, decode_null_aper, encode_boolean_aper,
+    encode_integer_aper, encode_null_aper,
+};
+pub use ber::{
+    decode_bit_string_ber, decode_bit_string_cer, decode_character_string_ber,
+    decode_character_string_cer, decode_choice_ber, decode_choice_cer, decode_collection_ber,
+    decode_collection_cer, decode_enumerated_ber, decode_enumerated_cer,
+    decode_generalized_time_ber, decode_generalized_time_cer, decode_ia5_string_ber,
+    decode_ia5_string_cer, decode_object_identifier_ber, decode_object_identifier_cer,
+    decode_octet_string_ber, decode_octet_string_cer, decode_relative_oid_ber,
+    decode_relative_oid_cer, decode_utc_time_ber, decode_utc_time_cer, encode_bit_string_cer,
+    encode_bit_string_der, encode_character_string_cer, encode_character_string_der,
+    encode_choice_cer, encode_choice_der, encode_collection_cer, encode_collection_der,
+    encode_enumerated_cer, encode_enumerated_der, encode_generalized_time_cer,
+    encode_generalized_time_der, encode_ia5_string_cer, encode_ia5_string_der,
+    encode_object_identifier_cer, encode_object_identifier_der, encode_octet_string_cer,
+    encode_octet_string_der, encode_relative_oid_cer, encode_relative_oid_der, encode_utc_time_cer,
+    encode_utc_time_der, CharacterString, CharacterStringKind, ChoiceAlternative, ChoiceField,
+    ChoiceValue, CollectionElementKind, CollectionInput, CollectionRootKind, CollectionValues,
+    FieldKind, GeneralizedTime, Ia5String, ObjectIdentifier, RecordContext, RecordEncoding,
+    RecordField, RelativeOid, SequenceReader, SequenceWriter, SetReader, SetWriter, Tag, TagClass,
+    UtcTime, MAX_TAG_NUMBER,
+};
+pub use big_integer::{
+    decode_big_integer_ber, decode_big_integer_cer, encode_big_integer_cer, encode_big_integer_der,
+    BigInteger,
+};
+pub use cbor::{
+    decode_boolean_cbor, decode_integer_cbor, decode_null_cbor, encode_boolean_cbor,
+    encode_integer_cbor, encode_null_cbor,
+};
+pub use jer::{
+    decode_bit_string_jer, decode_boolean_jer, decode_bounded_bit_string_jer,
+    decode_bounded_octet_string_jer, decode_enumerated_jer, decode_integer_jer, decode_null_jer,
+    decode_octet_string_jer, encode_bit_string_jer, encode_boolean_jer,
+    encode_bounded_bit_string_jer, encode_bounded_octet_string_jer, encode_enumerated_jer,
+    encode_integer_jer, encode_null_jer, encode_octet_string_jer,
+};
+pub use oer::{
+    decode_boolean_oer, decode_integer_oer, decode_null_oer, encode_boolean_oer,
+    encode_integer_oer, encode_null_oer,
+};
+pub use uper_cursor::{BitStringValue, UperReader, UperWriter};
+
 /// Default maximum number of input bytes accepted by one operation (1 MiB).
 pub const DEFAULT_MAX_INPUT_BYTES: usize = 1024 * 1024;
 
@@ -26,16 +94,17 @@ pub const DEFAULT_MAX_WORK_BITS: usize = 8 * 1024 * 1024;
 /// Resource ceilings applied by each primitive operation.
 ///
 /// The byte limits apply to the complete provided input slice and the complete
-/// encoded output buffer. `max_work_bits` bounds meaningful UPER bits or total
-/// CER output bits processed by one operation. These finite defaults are
-/// configurable by each caller.
+/// encoded output buffer. `max_work_bits` bounds primitive wire bits. For a
+/// composed UPER value, it bounds cumulative wire bits plus eight work units
+/// per field, including zero-width fields. These finite defaults are
+/// configurable by each caller. APER and OER use the same ceilings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
     /// Maximum size of the entire input slice accepted by a decode operation.
     pub max_input_bytes: usize,
     /// Maximum size of an encoded output buffer, including padding bytes.
     pub max_output_bytes: usize,
-    /// Maximum UPER bits or CER output bits processed per operation.
+    /// Maximum primitive wire bits or composed UPER field work units.
     pub max_work_bits: usize,
 }
 
@@ -52,13 +121,13 @@ pub enum Resource {
 
 /// A bounded encoding and the number of meaningful bits it contains.
 ///
-/// For UPER, `bit_len` counts meaningful bits and excludes final-byte padding.
-/// For CER, `bit_len` counts every bit in the complete octet-aligned TLV.
+/// For UPER and APER, `bit_len` counts meaningful bits; APER includes required
+/// internal alignment. OER, CER, and DER count all bits in their octets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Encoded {
     /// Encoded bytes, including codec-specific complete-value framing.
     pub bytes: Vec<u8>,
-    /// UPER meaningful bits or total octet-aligned CER wire bits.
+    /// Meaningful PER bits or total octet-aligned OER/CER/DER wire bits.
     pub bit_len: usize,
 }
 
@@ -768,27 +837,22 @@ pub fn encode_integer_der(
 /// `limits` bounds the entire input slice and this TLV's wire-bit work.
 ///
 /// # Returns
-/// The boolean value and TLV prefix consumption. BER TRUE accepts any
-/// nonzero content octet; this API deliberately requires exactly one content
-/// octet for BOOLEAN.
+/// The boolean value and TLV prefix consumption. BER FALSE accepts empty or
+/// all-zero content; TRUE accepts any nonzero octet in content of any length.
 ///
 /// # Errors
 /// Returns truncation, malformed tag/length/content, resource-limit, or size
 /// errors. Primitive indefinite lengths are rejected. It raises no exception.
 ///
 /// # Source, version, history, and example
-/// Original source: X.690 BER BOOLEAN rules and the asn1c BER decoder.
+/// Original source: C BER BOOLEAN decoder behavior; zero/multi-octet content
+/// extends the X.690 one-octet rule.
 /// Version/date: Rust BER API, 2026-10-30. Responsible party: asn1c
 /// maintainers. History: initial BER primitive prefix decoder. Example:
 /// `decode_boolean_ber(&[1, 1, 1], &Limits::default())?` is TRUE.
 pub fn decode_boolean_ber(input: &[u8], limits: &Limits) -> Result<Decoded<bool>, Error> {
     let (contents, decoded) = decode_ber_tlv(0x01, input, limits)?;
-    if contents.len() != 1 {
-        return Err(Error::InvalidEncoding {
-            reason: "BER BOOLEAN content must be exactly one octet",
-        });
-    }
-    Ok(decoded.map(|()| contents[0] != 0))
+    Ok(decoded.map(|()| contents.iter().any(|octet| *octet != 0)))
 }
 
 /// Decode one BER NULL primitive TLV prefix.
@@ -1918,6 +1982,9 @@ mod tests {
             (true, 4, 32)
         );
         assert!(!decode_boolean_ber(&[1, 1, 0], &limits).unwrap().value);
+        assert!(!decode_boolean_ber(&[1, 0], &limits).unwrap().value);
+        assert!(!decode_boolean_ber(&[1, 2, 0, 0], &limits).unwrap().value);
+        assert!(decode_boolean_ber(&[1, 2, 0, 1], &limits).unwrap().value);
 
         let null = decode_null_ber(&[5, 0x81, 0, 0xaa], &limits).unwrap();
         assert_eq!((null.consumed_bytes, null.consumed_bits), (3, 24));
@@ -1959,13 +2026,7 @@ mod tests {
     #[test]
     fn ber_malformed_and_truncated_inputs_are_rejected() {
         let limits = Limits::default();
-        for malformed in [
-            &[1, 0x80, 0][..],
-            &[1, 0xff][..],
-            &[1, 0][..],
-            &[1, 2, 1, 1][..],
-            &[0x21, 1, 0xff][..],
-        ] {
+        for malformed in [&[1, 0x80, 0][..], &[1, 0xff][..], &[0x21, 1, 0xff][..]] {
             assert!(matches!(
                 decode_boolean_ber(malformed, &limits),
                 Err(Error::InvalidEncoding { .. })
