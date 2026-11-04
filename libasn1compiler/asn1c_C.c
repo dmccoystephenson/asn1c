@@ -11,6 +11,9 @@
 #include "asn1c_ioc.h"
 #include "asn1c_naming.h"
 #include <stdint.h>
+#include <locale.h>
+#include <math.h>
+#include <stdio.h>
 #include <asn1print.h>
 #include <asn1fix_crange.h>	/* constraint groker from libasn1fix */
 #include <asn1fix_export.h>	/* other exportables from libasn1fix */
@@ -34,6 +37,10 @@ static int _tag2el_maps_emitted_equal(const tag2el_t *left,
 		const tag2el_t *right, int count);
 static void emit_set_mandatory_map(arg_t *arg, asn1p_expr_t *expr,
 		int elements);
+static void emit_set_member_map(arg_t *arg, asn1p_expr_t *expr,
+		int root, int count);
+static int emit_set_extension_group_adapters(arg_t *arg,
+		asn1p_expr_t *expr, int group_count);
 static int assign_set_extension_group_names(asn1p_expr_t *expr);
 
 enum onc_flags {
@@ -44,7 +51,7 @@ enum onc_flags {
 static int out_name_chain(arg_t *arg, enum onc_flags);
 static int asn1c_lang_C_type_SEQUENCE_def(
     arg_t *arg, asn1c_ioc_table_and_objset_t *);
-static int asn1c_lang_C_type_SET_def(arg_t *arg);
+static int asn1c_lang_C_type_SET_def(arg_t *arg, asn1c_ioc_table_and_objset_t *opt_ioc);
 static int asn1c_lang_C_type_CHOICE_def(arg_t *arg);
 static int asn1c_lang_C_type_SEx_OF_def(arg_t *arg, int seq_of);
 static int asn1c_lang_C_OpenType(arg_t *arg, asn1c_ioc_table_and_objset_t *opt_ioc, const char *column_name);
@@ -656,7 +663,8 @@ asn1c_lang_C_type_SEQUENCE_def(arg_t *arg, asn1c_ioc_table_and_objset_t *opt_ioc
 		});
 		OUT("};\n");
 
-		if((roms_count + aoms_count) && (arg->flags & (A1C_GEN_OER | A1C_GEN_UPER | A1C_GEN_APER | A1C_GEN_JER))) {
+		if((roms_count + aoms_count)
+		&& (arg->flags & (A1C_GEN_OER | A1C_GEN_UPER | A1C_GEN_APER | A1C_GEN_JER))) {
 			int elm = 0;
 			int comma = 0;
 			comp_mode = 0;
@@ -763,10 +771,19 @@ asn1c_lang_C_type_SET(arg_t *arg) {
 	int comp_mode = 0;	/* {root,ext=1,root,root,...} */
 	int saved_target = arg->target->target;
 	int ext_num = 1;
+    asn1c_ioc_table_and_objset_t ioc_tao;
 
 	if(assign_set_extension_group_names(expr)) return -1;
 
 	DEPENDENCIES;
+
+    /* SET members need the same IOC table and selected wrappers as SEQUENCE. */
+    ioc_tao = asn1c_get_ioc_table(arg);
+    if(ioc_tao.ioct) {
+        if(emit_ioc_table(arg, expr, ioc_tao)) return -1;
+    } else if(ioc_tao.fatal_error) {
+        return -1;
+    }
 
 	REDIR(OT_DEPS);
 
@@ -814,7 +831,19 @@ asn1c_lang_C_type_SET(arg_t *arg) {
 			sprintf(ext_name, "ext%d", ext_num++);
 			v->Identifier = strdup(ext_name);
 		}
-		EMBED(v);
+        if(is_open_type(arg, v, ioc_tao.ioct ? &ioc_tao : 0)) {
+            arg_t member_arg = *arg;
+            const char *column = v->reference->components[1].name;
+            member_arg.embed++;
+            member_arg.expr = v;
+            INDENT(+1);
+            if(asn1c_lang_C_OpenType(&member_arg, &ioc_tao, column)) return -1;
+            OUT(" %s%s;\n", MKID_safe(v),
+                v->marker.flags & EM_OPTIONAL ? "\t/* OPTIONAL */" : "");
+            INDENT(-1);
+        } else {
+            EMBED_WITH_IOCT(v, ioc_tao);
+        }
 	}
 
 	INDENTED(
@@ -842,11 +871,116 @@ asn1c_lang_C_type_SET(arg_t *arg) {
 		if(!expr->_anonymous_type) OUT(";\n");
 	}
 
-	return asn1c_lang_C_type_SET_def(arg);
+	return asn1c_lang_C_type_SET_def(arg, ioc_tao.ioct ? &ioc_tao : 0);
+}
+
+/*
+ * Purpose: emit SET specifics and the versioned extension-group adapter map.
+ * Source: Existing SET descriptor emission and generated v2/v3 metadata.
+ * Version/date: 1.0, 2026-10-30. Inputs: arg/expr identify the SET; counts
+ * and has_cxer describe its maps, roots, and extension groups.
+ * Returns: nothing. Errors: output failures are handled by the emitter.
+ * Author: asn1c maintainers. History: split from SET descriptor generation.
+ * Example: group-bearing descriptors advertise v3 and their adapter table.
+ */
+static void
+emit_set_specifics(arg_t *arg, asn1p_expr_t *expr, int tag2el_count,
+                   int tag2el_cxer_count, int has_cxer, int first_extension,
+                   int root_count, int extension_count, int extension_group_count) {
+    const char *p;
+	if(!(expr->_type_referenced)) OUT("static \n");
+	OUT("asn_SET_specifics_t asn_SPC_%s_specs_%d = {\n",
+		MKID(expr), expr->_type_unique_index);
+	INDENTED(
+		OUT("sizeof(%s),\n", c_name(arg).full_name);
+		OUT("offsetof(%s, _asn_ctx),\n", c_name(arg).full_name);
+		OUT("offsetof(%s, _presence_map),\n", c_name(arg).full_name);
+		emit_tag2member_reference(arg, expr, tag2el_count);
+		p = MKID(expr);
+		if(has_cxer)
+			OUT("asn_MAP_%s_tag2el_cxer_%d,\n",
+				p, expr->_type_unique_index);
+		else
+			OUT("asn_MAP_%s_tag2el_%d,\t/* Same as above */\n",
+				p, expr->_type_unique_index);
+		OUT("%d,\t/* Count of tags in the CXER map */\n",
+			tag2el_cxer_count);
+		OUT("%d,\t/* Whether extensible */\n",
+			first_extension < 0 ? 0 : (extension_group_count ? 3 : 2));
+		OUT("(const unsigned int *)asn_MAP_%s_mmap_%d,\t/* Mandatory elements map */\n",
+			p, expr->_type_unique_index);
+		if(extension_group_count) {
+			OUT("sizeof(asn_SET_specifics_t),\t/* Metadata size */\n");
+			OUT("ASN_SET_SPECIFICS_VERSION_3,\t/* Metadata version */\n");
+		} else {
+			OUT("offsetof(asn_SET_specifics_t, extension_groups),\t/* Metadata size */\n");
+			OUT("ASN_SET_SPECIFICS_VERSION,\t/* Metadata version */\n");
+		}
+		if(root_count) {
+			OUT("asn_MAP_%s_root_%d,\t/* Root members in declaration order */\n",
+				p, expr->_type_unique_index);
+		} else {
+			OUT("0,\t/* No root members */\n");
+		}
+		OUT("%d,\t/* Root member count */\n", root_count);
+		if(extension_count) {
+			OUT("asn_MAP_%s_extension_%d,\t/* Additions in declaration order */\n",
+				p, expr->_type_unique_index);
+		} else {
+			OUT("0,\t/* No extension additions */\n");
+		}
+		OUT("%d,\t/* Extension addition count */\n", extension_count);
+		if(extension_group_count) {
+			OUT("asn_MAP_%s_group_adapters_%d,\t/* Group SEQUENCE layouts */\n",
+				p, expr->_type_unique_index);
+			OUT("%d\t/* Extension group count */\n",
+				extension_group_count);
+		} else {
+			OUT("0,\t/* No extension group adapters */\n");
+			OUT("0\t/* Extension group count */\n");
+		}
+	);
+	OUT("};\n");
+
+}
+
+/*
+ * Purpose: emit declaration-order SET root, addition, and group maps.
+ * Source: SET component lists and compiler extension-marker handling.
+ * Version/date: 1.0, 2026-10-30. Inputs: arg/expr identify the SET;
+ * root_count, extension_count and group_count receive generated counts.
+ * Returns: zero on success, -1 when adapter generation fails.
+ * Errors: compiler output and group adapter errors are propagated.
+ * Author: asn1c maintainers. History: split from SET descriptor generation.
+ * Example: trailing root components are counted in the root partition.
+ */
+static int
+emit_set_partition(arg_t *arg, asn1p_expr_t *expr, int *root_count,
+                   int *extension_count, int *group_count) {
+    asn1p_expr_t *member;
+    int section = 0;
+    *root_count = *extension_count = *group_count = 0;
+    TQ_FOR(member, &(expr->members), next) {
+        if(member->expr_type == A1TC_EXTENSIBLE) {
+            if(section < 2) section++;
+        } else if(section == 1) {
+            (*extension_count)++;
+            if(member->marker.flags & EM_EXTENSION_GROUP) (*group_count)++;
+        } else {
+            (*root_count)++;
+        }
+    }
+    if(*root_count) emit_set_member_map(arg, expr, 1, *root_count);
+    if(*extension_count) emit_set_member_map(arg, expr, 0, *extension_count);
+    if(*group_count) {
+        GEN_INCLUDE_STD("constr_SEQUENCE");
+        if(emit_set_extension_group_adapters(arg, expr, *group_count)) return -1;
+    }
+    return 0;
 }
 
 static int
-asn1c_lang_C_type_SET_def(arg_t *arg) {
+asn1c_lang_C_type_SET_def(arg_t *arg, asn1c_ioc_table_and_objset_t *opt_ioc) {
 	asn1p_expr_t *expr = arg->expr;
 	asn1p_expr_t *v;
 	int elements;
@@ -856,9 +990,13 @@ asn1c_lang_C_type_SET_def(arg_t *arg) {
 	int tag2el_cxer_count = 0;
 	int tags_count;
 	int all_tags_count;
+	int first_extension;
+	int root_count;
+	int extension_count;
+	int extension_group_count;
 	enum tvm_compat tv_mode;
-	const char *p;
 	int saved_target = arg->target->target;
+	first_extension = compute_extensions_start(expr);
 
 	/*
 	 * Fetch every inner tag from the tag to elements map.
@@ -899,7 +1037,7 @@ asn1c_lang_C_type_SET_def(arg_t *arg) {
 			if(v->expr_type == A1TC_EXTENSIBLE) {
 				if(comp_mode < 3) comp_mode++;
 			} else {
-				emit_member_table(arg, v, NULL);
+                if(emit_member_table(arg, v, opt_ioc) < 0) return -1;
 				elements++;
 			}
 		});
@@ -922,30 +1060,17 @@ asn1c_lang_C_type_SET_def(arg_t *arg) {
 
 	/* Emit the mandatory-member bit map in outer SET component order. */
 	emit_set_mandatory_map(arg, expr, elements);
+	if(emit_set_partition(arg, expr, &root_count, &extension_count,
+	                      &extension_group_count)) {
+		free(tag2el);
+		free(tag2el_cxer);
+		REDIR(saved_target);
+		return -1;
+	}
 
-	if(!(expr->_type_referenced)) OUT("static \n");
-	OUT("asn_SET_specifics_t asn_SPC_%s_specs_%d = {\n",
-		MKID(expr), expr->_type_unique_index);
-	INDENTED(
-		OUT("sizeof(%s),\n", c_name(arg).full_name);
-		OUT("offsetof(%s, _asn_ctx),\n", c_name(arg).full_name);
-		OUT("offsetof(%s, _presence_map),\n", c_name(arg).full_name);
-		emit_tag2member_reference(arg, expr, tag2el_count);
-		p = MKID(expr);
-		if(tag2el_cxer)
-			OUT("asn_MAP_%s_tag2el_cxer_%d,\n",
-				p, expr->_type_unique_index);
-		else
-			OUT("asn_MAP_%s_tag2el_%d,\t/* Same as above */\n",
-				p, expr->_type_unique_index);
-		OUT("%d,\t/* Count of tags in the CXER map */\n",
-			tag2el_cxer_count);
-		OUT("%d,\t/* Whether extensible */\n",
-			compute_extensions_start(expr) == -1 ? 0 : 1);
-		OUT("(const unsigned int *)asn_MAP_%s_mmap_%d\t/* Mandatory elements map */\n",
-			p, expr->_type_unique_index);
-	);
-	OUT("};\n");
+	emit_set_specifics(arg, expr, tag2el_count, tag2el_cxer_count,
+	                   tag2el_cxer != NULL, first_extension, root_count,
+	                   extension_count, extension_group_count);
 
 	/*
 	 * Emit asn_DEF_xxx table.
@@ -1031,6 +1156,164 @@ emit_set_mandatory_map(arg_t *arg, asn1p_expr_t *expr, int elements) {
 	);
 	OUT("\n");
 	OUT("};\n");
+}
+
+/*
+ * Purpose: emit a SET root-member or extension-addition index map.
+ * Source: ASN.1 component order and extension-marker semantics.
+ * Version/date: 2026-10-30.
+ * Parameters: arg selects output; expr is the SET; root selects the root map.
+ *             count is the number of descriptor indexes to emit.
+ * Returns: none.
+ * Errors: output errors are handled by the compiler output layer.
+ * Author: asn1c maintainers.
+ * History: Added for versioned SET PER metadata.
+ * Example: emits roots surrounding a one-member extension region.
+ */
+static void
+emit_set_member_map(arg_t *arg, asn1p_expr_t *expr, int root, int count) {
+	asn1p_expr_t *member;
+	int section = 0;
+	int member_index = 0;
+	int emitted = 0;
+	const char *map_name = root ? "root" : "extension";
+
+	OUT("static const unsigned asn_MAP_%s_%s_%d[%d] = {",
+		MKID(expr), map_name, expr->_type_unique_index, count);
+	TQ_FOR(member, &(expr->members), next) {
+		if(member->expr_type == A1TC_EXTENSIBLE) {
+			/* Keep the first addition region separate from trailing roots. */
+			if(section < 2) section++;
+			continue;
+		}
+		if((section != 1) == root) {
+			if(emitted) OUT(", ");
+			OUT("%d", member_index);
+			emitted++;
+		}
+		member_index++;
+	}
+	OUT("};\n");
+}
+
+/*
+ * Purpose: emit SEQUENCE wire-layout metadata for synthetic SET groups.
+ * Original source: SET extension-group component lists and SEQUENCE specifics.
+ * Version/date: 2026-10-30.
+ * Parameters: arg selects the output context; expr is the parent SET;
+ *             group_count is the number of marked extension-group members.
+ * Returns: zero after emitting metadata, or -1 if the count disagrees.
+ * Errors: an inconsistent group count is reported to the compiler log.
+ * Responsible party: asn1c maintainers.
+ * History: Adds a v3 adapter while preserving the group's original SET type.
+ * Example: a SET group with two optional fields gets a SEQUENCE preamble map.
+ */
+static int
+emit_set_extension_group_adapters(arg_t *arg, asn1p_expr_t *expr,
+		int group_count) {
+	asn1p_expr_t *member;
+	int section = 0;
+	int outer_index = 0;
+	int group_index = 0;
+	const char *parent_id_buffer = MKID(expr);
+	char *parent_id = NULL;
+	int unique_index = expr->_type_unique_index;
+
+	/* Keep the parent name stable across c_expr_name()'s shared buffers. */
+	if(parent_id_buffer) parent_id = strdup(parent_id_buffer);
+	if(!parent_id) {
+		FATAL("Cannot copy SET extension-group adapter name");
+		return -1;
+	}
+
+	/* Emit the group-specific SEQUENCE layout without altering the SET type. */
+	TQ_FOR(member, &(expr->members), next) {
+		asn1p_expr_t *child;
+		struct c_names group_names;
+		int optional_count = 0;
+		int child_index = 0;
+		int emitted = 0;
+
+		if(member->expr_type == A1TC_EXTENSIBLE) {
+			if(section < 2) section++;
+			continue;
+		}
+		if(section != 1 || !(member->marker.flags & EM_EXTENSION_GROUP)) {
+			outer_index++;
+			continue;
+		}
+
+		TQ_FOR(child, &(member->members), next) {
+			if(child->expr_type == A1TC_EXTENSIBLE) continue;
+			if(child->marker.flags & EM_OMITABLE) optional_count++;
+		}
+		group_names = c_expr_name(arg, member);
+		if(optional_count) {
+			OUT("static const int asn_MAP_%s_group_oms_%d_%d[%d] = {",
+				parent_id, unique_index, group_index, optional_count);
+			TQ_FOR(child, &(member->members), next) {
+				if(child->expr_type == A1TC_EXTENSIBLE) continue;
+				if(child->marker.flags & EM_OMITABLE) {
+					if(emitted++) OUT(", ");
+					OUT("%d", child_index);
+				}
+				child_index++;
+			}
+			OUT("};\n");
+		}
+		OUT("static asn_SEQUENCE_specifics_t ");
+		OUT("asn_SPC_%s_group_sequence_%d_%d = {\n",
+			parent_id, unique_index, group_index);
+		INDENT(+1);
+		OUT("sizeof(%s),\t/* Group storage size */\n", group_names.full_name);
+		OUT("offsetof(%s, _asn_ctx),\t/* Group context offset */\n",
+			group_names.full_name);
+		OUT("0, 0,\t/* Tag map is not used by OER */\n");
+		if(optional_count) {
+			OUT("asn_MAP_%s_group_oms_%d_%d,\t/* Optional members */\n",
+				parent_id, unique_index, group_index);
+		} else {
+			OUT("0,\t/* No optional members */\n");
+		}
+		OUT("%d, 0,\t/* Root and additions optional counts */\n",
+			optional_count);
+		OUT("-1, 0\t/* No nested extensions or group body */\n");
+		INDENT(-1);
+		OUT("};\n");
+		outer_index++;
+		group_index++;
+	}
+
+	if(group_index != group_count) {
+		FATAL("SET extension-group adapter count changed during code generation");
+		free(parent_id);
+		return -1;
+	}
+
+	/* Keep adapters in declaration order for runtime index lookup. */
+	OUT("static const asn_SET_extension_group_t ");
+	OUT("asn_MAP_%s_group_adapters_%d[%d] = {\n",
+		parent_id, unique_index, group_count);
+	INDENTED(
+		section = 0;
+		outer_index = 0;
+		group_index = 0;
+		TQ_FOR(member, &(expr->members), next) {
+			if(member->expr_type == A1TC_EXTENSIBLE) {
+				if(section < 2) section++;
+				continue;
+			}
+			if(section == 1 && (member->marker.flags & EM_EXTENSION_GROUP)) {
+				OUT("{ %d, &asn_SPC_%s_group_sequence_%d_%d },\n",
+					outer_index, parent_id, unique_index, group_index++);
+			}
+			outer_index++;
+		}
+	);
+	OUT("};\n");
+
+	free(parent_id);
+	return 0;
 }
 
 /*
@@ -1985,6 +2268,8 @@ asn1c_lang_C_type_REFERENCE(arg_t *arg) {
 			return -1;
 		}
 
+        /* The field occurrence determines whether this member is indirect. */
+        extract->marker.flags |= arg->expr->marker.flags & EM_INDIRECT;
 		tmp = *arg;
 		tmp.asn = arg->asn;
 		tmp.expr = extract;
@@ -2022,6 +2307,7 @@ asn1c_lang_C_type_SIMPLE_TYPE(arg_t *arg) {
 	const char *p;
 	int saved_target = arg->target->target;
 
+	if(asn1c_check_contained_type(arg, expr)) return -1;
 	if(arg->embed) {
 		enum tnfmt tnfmt = TNF_CTYPE;
 
@@ -2204,7 +2490,9 @@ asn1c_lang_C_type_SIMPLE_TYPE(arg_t *arg) {
 		OUT("\t\tasn_app_constraint_failed_f *ctfailcb, void *app_key) {");
 		OUT("\n");
 		DEBUG("expr constraint checking code for %s", p);
-		if(asn1c_emit_constraint_checking_code(arg) == 1) {
+		int constraint_result = asn1c_emit_constraint_checking_code(arg);
+		if(constraint_result < 0) return -1;
+		if(constraint_result == 1) {
 			/* Constraint emission reuses MKID's shared naming buffer while
 			 * resolving base and contained types. Recompute our own name so
 			 * the generated guard compares against this function, not a base
@@ -3820,7 +4108,53 @@ member_has_oer_constraints(asn1p_expr_t *expr, asn1p_expr_type_e etype) {
 static int
 member_has_per_constraints(asn1p_expr_t *expr, asn1p_expr_type_e etype) {
 	return member_has_oer_constraints(expr, etype)
-		|| (etype & ASN_STRING_KM_MASK);
+		|| (etype & ASN_STRING_KM_MASK)
+		|| etype == ASN_BASIC_UTCTime
+		|| etype == ASN_BASIC_GeneralizedTime;
+}
+
+/*
+ * Purpose: Emit the canonical NumericString PER character maps for a type
+ *          whose effective alphabet is the unconstrained built-in alphabet.
+ * Original source: ITU-T X.691 (02/2021), clauses 30.5.2 and 30.5.4.
+ * Version/date: 2026-11-01.
+ * Parameters: arg is the output context; expr names the type; suffix_index
+ *             makes the generated functions unique in their translation unit.
+ * Returns: Nothing; output errors follow the existing generator path.
+ * Exceptions: None; invalid characters and codes yield -1 at runtime.
+ * Responsible party: asn1c maintainers.
+ * History: Added for issue #595 so aliases retain NumericString's map.
+ * Example: Space maps to zero, while digit '0' maps to one.
+ */
+static void
+emit_builtin_numeric_per_map(arg_t *arg, asn1p_expr_t *expr,
+                             int suffix_index) {
+	OUT("/** Purpose: Map one NumericString character to its PER code.\n");
+	OUT(" * Original source: ITU-T X.691 (02/2021), clause 30.5.4.\n");
+	OUT(" * Version/date: 2026-11-01. Parameter: value is a character code.\n");
+	OUT(" * Returns: code, or -1 for invalid input. Exceptions: none.\n");
+	OUT(" * Author: asn1c maintainers. History: issue #595 alias map.\n");
+	OUT(" * Example: '0' maps to 1, while space maps to 0.\n");
+	OUT(" */\n");
+	OUT("static int asn_PER_NUM_%s_%d_v2c(unsigned int value) {\n",
+	    MKID(expr), suffix_index);
+	OUT("\tif(value == 0x20) return 0;\n");
+	OUT("\tif(value >= 0x30 && value <= 0x39) return (int)value - 0x2f;\n");
+	OUT("\treturn -1;\n");
+	OUT("}\n");
+	OUT("/** Purpose: Map one NumericString PER code to its character.\n");
+	OUT(" * Original source: ITU-T X.691 (02/2021), clause 30.5.4.\n");
+	OUT(" * Version/date: 2026-11-01. Parameter: code is a four-bit symbol.\n");
+	OUT(" * Returns: character, or -1 for invalid input. Exceptions: none.\n");
+	OUT(" * Author: asn1c maintainers. History: issue #595 alias map.\n");
+	OUT(" * Example: code 1 maps to '0', while code 0 maps to space.\n");
+	OUT(" */\n");
+	OUT("static int asn_PER_NUM_%s_%d_c2v(unsigned int code) {\n",
+	    MKID(expr), suffix_index);
+	OUT("\tif(code == 0) return 0x20;\n");
+	OUT("\tif(code <= 10) return (int)code + 0x2f;\n");
+	OUT("\treturn -1;\n");
+	OUT("}\n");
 }
 
 /*
@@ -3928,78 +4262,171 @@ emit_member_OER_constraints(arg_t *arg, asn1p_expr_t *expr, const char *pfx,
 }
 
 /*
- * Purpose: Generate member-specific PER constraint metadata.
- * Original source: asn1c C backend member-table emitter.
- * Version/date: 2026-10-23.
- * Parameters: arg is the generation context; expr is the member; pfx is its name prefix.
- * Returns: Zero on success; -1 if range generation fails.
- * Exceptions: None; errors use the existing generation return path.
+ * Purpose: Emit the effective PER size constraint for one generated member.
+ * Original source: asn1c C backend PER constraint emitter.
+ * Version/date: 2026-11-01.
+ * Parameters: arg is the output context; expr is the member; etype is its
+ *             resolved ASN.1 type.
+ * Returns: Zero on success, or -1 if constraint emission fails.
+ * Exceptions: None; failures use the compiler's return path.
  * Responsible party: asn1c maintainers.
- * History: Uses the shared PER table eligibility predicate.
- * Example: Generate a PER alphabet constraint for an IA5String member.
+ * History: Extracted during issue #595 to bound callable-unit size.
+ * Example: An unconstrained UTCTime alias retains semi-constrained size.
  */
 static int
-emit_member_PER_constraints(arg_t *arg, asn1p_expr_t *expr, const char *pfx,
-                            int suffix_index) {
-	int save_target = arg->target->target;
+emit_member_PER_size_constraints(arg_t *arg, asn1p_expr_t *expr,
+                                 asn1p_expr_type_e etype) {
 	asn1cnst_range_t *range;
-	asn1p_expr_type_e etype;
 
-	etype = expr_get_type(arg, expr);
+	range = asn1constraint_compute_PER_range(expr->Identifier, etype,
+			expr->combined_constraints, ACT_CT_SIZE, 0, 0,
+			CPR_ignore_extension_additions);
 
-	if((arg->flags & (A1C_GEN_UPER | A1C_GEN_APER))
-	&& member_has_per_constraints(expr, etype)) {
-		/* Fall through */
+	if(constraint_is_component_relation_only(expr->constraints)) {
+		asn1p_expr_t *terminal =
+			asn1f_find_terminal_type_ex(arg->asn, arg->ns, expr);
+		if(terminal && terminal != expr && terminal->combined_constraints) {
+			asn1cnst_range_t *type_range =
+				asn1constraint_compute_PER_range(
+					terminal->Identifier, expr_get_type(arg, terminal),
+					terminal->combined_constraints, ACT_CT_SIZE,
+					0, 0, CPR_ignore_extension_additions);
+			if(range && type_range) {
+				range->extensible |= type_range->extensible;
+			}
+			if(type_range) asn1constraint_range_free(type_range);
+		}
+	}
+
+	/*
+	 * UTF8String (SIZE(lb..ub, ...)) has no PER-visible alphabet
+	 * constraint, but its extensible size constraint is still PER-visible.
+	 * Some inputs are reduced to an unconstrained PER range here, which
+	 * makes the generated APER decoder miss the extension bit and fail to
+	 * decode otherwise valid messages.  Fall back to the generic constraint
+	 * range only when the PER range has lost the size constraint and there
+	 * is an explicit constraint to recover.
+	 */
+	if((etype & ASN_STRING_MASK)
+	&& expr->combined_constraints
+	&& asn1c_per_range_needs_generic_size_fallback(range)) {
+		asn1cnst_range_t *generic_range =
+			asn1constraint_compute_constraint_range(
+				expr->Identifier, etype, expr->combined_constraints,
+				ACT_CT_SIZE, 0, 0, 0);
+
+		if(generic_range
+		&& !generic_range->incompatible
+		&& !generic_range->empty_constraint
+		&& !(generic_range->left.type == ARE_MIN
+			&& generic_range->right.type == ARE_MAX)) {
+			/*
+			 * The generic constraint range is not produced by
+			 * asn1constraint_compute_PER_range(), so it can still carry
+			 * not_PER_visible even though SIZE(lb..ub, ...) is exactly
+			 * what PER needs for constrained length encoding.
+			 */
+			generic_range->not_PER_visible = 0;
+
+			if(range) asn1constraint_range_free(range);
+			range = generic_range;
+		} else {
+			if(generic_range) asn1constraint_range_free(generic_range);
+		}
+	}
+
+	if((etype == ASN_BASIC_UTCTime
+	    || etype == ASN_BASIC_GeneralizedTime)
+	   && !expr->combined_constraints) {
+		/* Match the built-in time descriptors' unrestricted size rule. */
+		OUT("{ APC_SEMI_CONSTRAINED, -1, -1, 0, 0 }");
+	} else if(emit_single_member_PER_constraint(arg, range, 0, "SIZE")) {
+		asn1constraint_range_free(range);
+		return -1;
+	}
+	asn1constraint_range_free(range);
+	OUT(",\n");
+	return 0;
+}
+
+/*
+ * Purpose: Emit PER character conversion callbacks for a generated member.
+ * Original source: asn1c C backend PER constraint emitter.
+ * Version/date: 2026-11-01.
+ * Parameters: arg is the output context; expr is the member; etype is its
+ *             resolved type; suffix_index selects unique callback names;
+ *             builtin_numeric_map selects the canonical NumericString map.
+ * Returns: Nothing; output errors use the existing generator path.
+ * Exceptions: None.
+ * Responsible party: asn1c maintainers.
+ * History: Extracted during issue #595 to bound callable-unit size.
+ * Example: A plain NumericString alias receives both map callbacks.
+ */
+static void
+emit_member_PER_map_callbacks(arg_t *arg, asn1p_expr_t *expr,
+                              asn1p_expr_type_e etype, int suffix_index,
+                              int builtin_numeric_map) {
+	if((etype & ASN_STRING_KM_MASK) && (expr->_mark & TM_PERFROMCT)) {
+		int old_target = arg->target->target;
+		REDIR(OT_CODE);
+
+		OUT("static int asn_PER_MAP_%s_%d_v2c(unsigned int value) {\n",
+			MKID(expr), suffix_index);
+		OUT("\tif(value >= sizeof(permitted_alphabet_table_%d)/"
+			"sizeof(permitted_alphabet_table_%d[0]))\n",
+			suffix_index,
+			suffix_index);
+		OUT("\t\treturn -1;\n");
+		OUT("\treturn permitted_alphabet_table_%d[value] - 1;\n",
+			suffix_index);
+		OUT("}\n");
+
+		OUT("static int asn_PER_MAP_%s_%d_c2v(unsigned int code) {\n",
+			MKID(expr), suffix_index);
+		OUT("\tif(code >= sizeof(permitted_alphabet_code2value_%d)/"
+			"sizeof(permitted_alphabet_code2value_%d[0]))\n",
+			suffix_index,
+			suffix_index);
+		OUT("\t\treturn -1;\n");
+		OUT("\treturn permitted_alphabet_code2value_%d[code];\n",
+			suffix_index);
+		OUT("}\n");
+
+		REDIR(old_target);
+
+		OUT("asn_PER_MAP_%s_%d_v2c,\t/* Value to PER code map */\n",
+			MKID(expr), suffix_index);
+		OUT("asn_PER_MAP_%s_%d_c2v\t/* PER code to value map */\n",
+			MKID(expr), suffix_index);
+	} else if(builtin_numeric_map) {
+		OUT("asn_PER_NUM_%s_%d_v2c,\t/* NumericString value map */\n",
+		    MKID(expr), suffix_index);
+		OUT("asn_PER_NUM_%s_%d_c2v\t/* NumericString code map */\n",
+		    MKID(expr), suffix_index);
+	} else if(etype & ASN_STRING_KM_MASK) {
+		DEBUG("No PER value map necessary for %s", MKID(expr));
+		OUT("0, 0\t/* No PER character map necessary */\n");
 	} else {
-		return 0;
+		OUT("0, 0\t/* No PER value map */\n");
 	}
+}
 
-	/* Generate extern declaration for potentially shared constraint functions */
-	const char *ident = MKID(expr);
-	int needs_extern_decl = expr->_type_referenced;
-	
-	/* Also generate extern declaration for generic type-based constraint names that could collide across files */
-	if (!needs_extern_decl && ident && pfx && 
-	    strcmp(pfx, "memb") == 0 && /* Only for member constraints */
-	    (strstr(ident, "OCTET_STRING_SIZE_") || strstr(ident, "BIT_STRING_SIZE_"))) {
-		needs_extern_decl = 1;
-	}
-	
-	if(needs_extern_decl) {
-		REDIR(OT_FUNC_DECLS);
-
-		OUT("extern asn_per_constraints_t "
-			"asn_PER_%s_%s_constr_%d;\n",
-			pfx, MKID(expr), suffix_index);
-	}
-
-	REDIR(OT_CTDEFS);
-
-    OUT_NOINDENT("#if !defined(ASN_DISABLE_UPER_SUPPORT) || !defined(ASN_DISABLE_APER_SUPPORT)\n");
-	if(!(expr->_type_referenced)) {
-		/* 
-		 * Make constraint functions non-static if they use type-based names
-		 * that could be shared across multiple generated files to avoid
-		 * undefined reference errors in complex specs with circular dependencies.
-		 */
-		const char *ident = MKID(expr);
-		int make_non_static = 0;
-		
-		/* Check if this is a generic type-based constraint name that could collide (only for member constraints) */
-		if (ident && pfx && strcmp(pfx, "memb") == 0 && 
-		    (strstr(ident, "OCTET_STRING_SIZE_") || strstr(ident, "BIT_STRING_SIZE_"))) {
-			make_non_static = 1;
-		}
-		
-		if (!make_non_static) {
-			OUT("static ");
-		}
-	}
-	OUT("asn_per_constraints_t "
-		"asn_PER_%s_%s_constr_%d CC_NOTUSED = {\n",
-		pfx, MKID(expr), suffix_index);
-
-	INDENT(+1);
+/*
+ * Purpose: Emit the effective PER value or alphabet constraint.
+ * Original source: asn1c C backend PER constraint emitter.
+ * Version/date: 2026-11-01.
+ * Parameters: arg is the output context; expr is the member; etype is its
+ *             resolved ASN.1 type.
+ * Returns: Zero on success, or -1 if constraint emission fails.
+ * Exceptions: None; failures use the compiler's return path.
+ * Responsible party: asn1c maintainers.
+ * History: Extracted during issue #595 to bound complexity and unit size.
+ * Example: A UTCTime alias uses VisibleString's seven-bit alphabet.
+ */
+static int
+emit_member_PER_value_constraints(arg_t *arg, asn1p_expr_t *expr,
+                                  asn1p_expr_type_e etype) {
+	asn1cnst_range_t *range;
 
 	/*
 	 * ENUMERATED and CHOICE are special.
@@ -4031,6 +4458,11 @@ emit_member_PER_constraints(arg_t *arg, asn1p_expr_t *expr, const char *pfx,
 		tmprng.right.value = eidx < 0 ? 0 : eidx;
 		if(emit_single_member_PER_constraint(arg, &tmprng, 0, 0))
 			return -1;
+	} else if(etype == ASN_BASIC_UTCTime
+	          || etype == ASN_BASIC_GeneralizedTime) {
+		/* X.691 10.6.5 uses the VisibleString alphabet for time values. */
+		OUT("{ APC_CONSTRAINED, 7, 7, 32, 126 }"
+		    " /* VisibleString alphabet */");
 	} else if(etype & ASN_STRING_KM_MASK) {
 		range = asn1constraint_compute_PER_range(expr->Identifier, etype,
 				expr->combined_constraints, ACT_CT_FROM,
@@ -4091,109 +4523,95 @@ emit_member_PER_constraints(arg_t *arg, asn1p_expr_t *expr, const char *pfx,
 		asn1constraint_range_free(range);
 	}
 	OUT(",\n");
+	return 0;
+}
 
-	range = asn1constraint_compute_PER_range(expr->Identifier, etype,
-			expr->combined_constraints, ACT_CT_SIZE, 0, 0,
-			CPR_ignore_extension_additions);
+/*
+ * Purpose: Generate member-specific PER constraint metadata.
+ * Original source: asn1c C backend member-table emitter.
+ * Version/date: 2026-10-23.
+ * Parameters: arg is the generation context; expr is the member; pfx is its name prefix.
+ * Returns: Zero on success; -1 if range generation fails.
+ * Exceptions: None; errors use the existing generation return path.
+ * Responsible party: asn1c maintainers.
+ * History: Uses the shared PER table eligibility predicate.
+ * Example: Generate a PER alphabet constraint for an IA5String member.
+ */
+static int
+emit_member_PER_constraints(arg_t *arg, asn1p_expr_t *expr, const char *pfx,
+                            int suffix_index) {
+	int save_target = arg->target->target;
+	asn1p_expr_type_e etype;
+	int builtin_numeric_map;
 
-	if(constraint_is_component_relation_only(expr->constraints)) {
-		asn1p_expr_t *terminal =
-			asn1f_find_terminal_type_ex(arg->asn, arg->ns, expr);
-		if(terminal && terminal != expr && terminal->combined_constraints) {
-			asn1cnst_range_t *type_range =
-				asn1constraint_compute_PER_range(
-					terminal->Identifier, expr_get_type(arg, terminal),
-					terminal->combined_constraints, ACT_CT_SIZE,
-					0, 0, CPR_ignore_extension_additions);
-			if(range && type_range) {
-				range->extensible |= type_range->extensible;
-			}
-			if(type_range) asn1constraint_range_free(type_range);
-		}
-	}
+	etype = expr_get_type(arg, expr);
+	builtin_numeric_map = etype == ASN_STRING_NumericString
+		&& pfx && strcmp(pfx, "type") == 0
+		&& !(expr->_mark & TM_PERFROMCT);
 
-	/*
-	 * UTF8String (SIZE(lb..ub, ...)) has no PER-visible alphabet
-	 * constraint, but its extensible size constraint is still PER-visible.
-	 * Some inputs are reduced to an unconstrained PER range here, which
-	 * makes the generated APER decoder miss the extension bit and fail to
-	 * decode otherwise valid messages.  Fall back to the generic constraint
-	 * range only when the PER range has lost the size constraint and there
-	 * is an explicit constraint to recover.
-	 */
-	if((etype & ASN_STRING_MASK)
-	&& expr->combined_constraints
-	&& asn1c_per_range_needs_generic_size_fallback(range)) {
-		asn1cnst_range_t *generic_range =
-			asn1constraint_compute_constraint_range(
-				expr->Identifier, etype, expr->combined_constraints,
-				ACT_CT_SIZE, 0, 0, 0);
-
-		if(generic_range
-		&& !generic_range->incompatible
-		&& !generic_range->empty_constraint
-		&& !(generic_range->left.type == ARE_MIN
-			&& generic_range->right.type == ARE_MAX)) {
-			/*
-			 * The generic constraint range is not produced by
-			 * asn1constraint_compute_PER_range(), so it can still carry
-			 * not_PER_visible even though SIZE(lb..ub, ...) is exactly
-			 * what PER needs for constrained length encoding.
-			 */
-			generic_range->not_PER_visible = 0;
-
-			if(range) asn1constraint_range_free(range);
-			range = generic_range;
-		} else {
-			if(generic_range) asn1constraint_range_free(generic_range);
-		}
-	}
-
-	if(emit_single_member_PER_constraint(arg, range, 0, "SIZE")) {
-		asn1constraint_range_free(range);
-		return -1;
-	}
-	asn1constraint_range_free(range);
-	OUT(",\n");
-
-	if((etype & ASN_STRING_KM_MASK) && (expr->_mark & TM_PERFROMCT)) {
-		int old_target = arg->target->target;
-		REDIR(OT_CODE);
-
-		OUT("static int asn_PER_MAP_%s_%d_v2c(unsigned int value) {\n",
-			MKID(expr), suffix_index);
-		OUT("\tif(value >= sizeof(permitted_alphabet_table_%d)/"
-			"sizeof(permitted_alphabet_table_%d[0]))\n",
-			suffix_index,
-			suffix_index);
-		OUT("\t\treturn -1;\n");
-		OUT("\treturn permitted_alphabet_table_%d[value] - 1;\n",
-			suffix_index);
-		OUT("}\n");
-
-		OUT("static int asn_PER_MAP_%s_%d_c2v(unsigned int code) {\n",
-			MKID(expr), suffix_index);
-		OUT("\tif(code >= sizeof(permitted_alphabet_code2value_%d)/"
-			"sizeof(permitted_alphabet_code2value_%d[0]))\n",
-			suffix_index,
-			suffix_index);
-		OUT("\t\treturn -1;\n");
-		OUT("\treturn permitted_alphabet_code2value_%d[code];\n",
-			suffix_index);
-		OUT("}\n");
-
-		REDIR(old_target);
-
-		OUT("asn_PER_MAP_%s_%d_v2c,\t/* Value to PER code map */\n",
-			MKID(expr), suffix_index);
-		OUT("asn_PER_MAP_%s_%d_c2v\t/* PER code to value map */\n",
-			MKID(expr), suffix_index);
-	} else if(etype & ASN_STRING_KM_MASK) {
-		DEBUG("No PER value map necessary for %s", MKID(expr));
-		OUT("0, 0\t/* No PER character map necessary */\n");
+	if((arg->flags & (A1C_GEN_UPER | A1C_GEN_APER))
+	&& member_has_per_constraints(expr, etype)) {
+		/* Fall through */
 	} else {
-		OUT("0, 0\t/* No PER value map */\n");
+		return 0;
 	}
+
+	/* Generate extern declaration for potentially shared constraint functions */
+	const char *ident = MKID(expr);
+	int needs_extern_decl = expr->_type_referenced;
+
+	/* Also generate extern declaration for generic type-based constraint names that could collide across files */
+	if (!needs_extern_decl && ident && pfx &&
+	    strcmp(pfx, "memb") == 0 && /* Only for member constraints */
+	    (strstr(ident, "OCTET_STRING_SIZE_") || strstr(ident, "BIT_STRING_SIZE_"))) {
+		needs_extern_decl = 1;
+	}
+
+	if(needs_extern_decl) {
+		REDIR(OT_FUNC_DECLS);
+
+		OUT("extern asn_per_constraints_t "
+			"asn_PER_%s_%s_constr_%d;\n",
+			pfx, MKID(expr), suffix_index);
+	}
+
+	REDIR(OT_CTDEFS);
+
+    OUT_NOINDENT("#if !defined(ASN_DISABLE_UPER_SUPPORT) || !defined(ASN_DISABLE_APER_SUPPORT)\n");
+	if(builtin_numeric_map) {
+		/* Plain aliases have no generated FROM map to rank NumericString. */
+		emit_builtin_numeric_per_map(arg, expr, suffix_index);
+	}
+	if(!(expr->_type_referenced)) {
+		/*
+		 * Make constraint functions non-static if they use type-based names
+		 * that could be shared across multiple generated files to avoid
+		 * undefined reference errors in complex specs with circular dependencies.
+		 */
+		const char *ident = MKID(expr);
+		int make_non_static = 0;
+
+		/* Check generic type-based names for collisions in member constraints. */
+		if (ident && pfx && strcmp(pfx, "memb") == 0 &&
+		    (strstr(ident, "OCTET_STRING_SIZE_") || strstr(ident, "BIT_STRING_SIZE_"))) {
+			make_non_static = 1;
+		}
+
+		if (!make_non_static) {
+			OUT("static ");
+		}
+	}
+	OUT("asn_per_constraints_t "
+		"asn_PER_%s_%s_constr_%d CC_NOTUSED = {\n",
+		pfx, MKID(expr), suffix_index);
+
+	INDENT(+1);
+
+	if(emit_member_PER_value_constraints(arg, expr, etype)) return -1;
+
+	if(emit_member_PER_size_constraints(arg, expr, etype)) return -1;
+
+	emit_member_PER_map_callbacks(arg, expr, etype, suffix_index, builtin_numeric_map);
 
 	INDENT(-1);
 
@@ -4339,154 +4757,335 @@ emit_default_bitstring_value(arg_t *arg, asn1p_value_t *v) {
 }
 
 /*
- * Purpose: Emit inline DEFAULT callbacks for primitive ASN.1 members.
- * Original source: The asn1c C code generator; storage selection follows
- *                  asn1c_select_integer_storage().
- * Version/date: 1.1, 2026-10-26.
- * Parameters: arg is the generator context; expr is the member expression;
- *             out selects descriptor references instead of definitions.
- * Returns: One when a DEFAULT callback was emitted, zero when unsupported.
- * Exceptions: None; generator output and allocation failures are handled by
- *             the surrounding generator infrastructure.
- * Responsible party: asn1c maintainers.
- * History: Use the selected INTEGER storage for issue #591 DEFAULT callbacks.
- * Example: INTEGER DEFAULT 1 with -finteger-native-type=uint64.
+ * Purpose: format a REAL DEFAULT as a locale-independent C floating literal.
+ * Original source: ASN.1 REAL values parsed into asn1p_value_t::v_double.
+ * Version/date: 1.0, 2026-10-31.
+ * Inputs: value is the parsed REAL; output and output_size select the buffer.
+ * Returns: Zero on success; -1 for a formatting or buffer failure.
+ * Errors: Non-finite values use C99 math macros; invalid buffers fail.
+ * Responsible party: asn1c maintainers. History: added for REAL DEFAULTs.
+ * Example: 0.5 is emitted as the valid C token "0.5" under any locale.
  */
 static int
-try_inline_default(arg_t *arg, asn1p_expr_t *expr, int out) {
+format_real_default(double value, char *output, size_t output_size) {
+	char formatted[128];
+	const struct lconv *locale;
+	const char *decimal_point;
+	size_t decimal_size;
+	size_t source_pos = 0;
+	size_t output_pos = 0;
+	int formatted_size;
+
+	if(!output || output_size == 0) return -1;
+	if(isnan(value)) {
+		formatted_size = snprintf(output, output_size, "NAN");
+		return formatted_size >= 0 && (size_t)formatted_size < output_size ? 0 : -1;
+	}
+	if(isinf(value)) {
+		const char *literal = signbit(value) ? "-INFINITY" : "INFINITY";
+		formatted_size = snprintf(output, output_size, "%s", literal);
+		return formatted_size >= 0 && (size_t)formatted_size < output_size ? 0 : -1;
+	}
+
+	formatted_size = snprintf(formatted, sizeof(formatted), "%.17g", value);
+	if(formatted_size < 0 || (size_t)formatted_size >= sizeof(formatted)) return -1;
+	locale = localeconv();
+	decimal_point = locale ? locale->decimal_point : 0;
+	if(!decimal_point || !decimal_point[0]) decimal_point = ".";
+	decimal_size = strlen(decimal_point);
+	while(source_pos < (size_t)formatted_size) {
+		if(strncmp(formatted + source_pos, decimal_point, decimal_size) == 0) {
+			if(output_pos + 1 >= output_size) return -1;
+			output[output_pos++] = '.';
+			source_pos += decimal_size;
+		} else {
+			if(output_pos + 1 >= output_size) return -1;
+			output[output_pos++] = formatted[source_pos++];
+		}
+	}
+	output[output_pos] = '\0';
+	if(!strchr(output, '.') && !strchr(output, 'e') && !strchr(output, 'E')) {
+		if(output_pos + 3 > output_size) return -1;
+		output[output_pos++] = '.';
+		output[output_pos++] = '0';
+		output[output_pos] = '\0';
+	}
+	return 0;
+}
+
+/*
+ * Purpose: emit compare and set callbacks for a primitive REAL DEFAULT.
+ * Original source: the generated C DEFAULT callback contract.
+ * Version/date: 1.0, 2026-10-31.
+ * Inputs: arg and expr identify the member; out selects descriptor references.
+ * Returns: One when callbacks are emitted, zero for an unsupported value.
+ * Errors: Generated allocation/conversion failures return -1 at runtime.
+ * Responsible party: asn1c maintainers. History: adds REAL callback support.
+ * Example: REAL DEFAULT 0.5 gains callbacks for native and wide storage.
+ */
+static int
+try_inline_real_default(arg_t *arg, asn1p_expr_t *expr, int out) {
+	char literal[128];
+	const char *ctype;
+	int native_real;
 	int save_target = arg->target->target;
-	asn1p_expr_type_e etype = expr_get_type(arg, expr);
-	int fits_long = 0;
-	char default_name[128];
+	int type_index = expr->_type_unique_index;
 
-	switch(etype) {
-	case ASN_BASIC_BOOLEAN:
-		fits_long = 1;
-        /* Fall through */
-	case ASN_BASIC_INTEGER:
-	case ASN_BASIC_ENUMERATED:
-		if(expr->marker.default_value == NULL
-		|| (expr->marker.default_value->type != ATV_INTEGER &&
-		    expr->marker.default_value->type != ATV_TRUE &&
-		    expr->marker.default_value->type != ATV_FALSE))
-			break;
-		/* Keep negative literals in C identifiers without negating INT_MIN. */
-		if(asn1p_itoa_s(default_name, sizeof(default_name),
-		                  expr->marker.default_value->value.v_integer) < 0)
-			return 0;
-		if(default_name[0] == '-') default_name[0] = 'm';
-		/* INTEGER storage may remain INTEGER_t even when its value fits long. */
-		if(etype == ASN_BASIC_INTEGER)
-			fits_long = asn1c_select_integer_storage(arg, expr) != AISK_INTEGER_T;
-		else if(!fits_long)
-			fits_long = asn1c_type_fits_long(arg, expr) != FL_NOTFIT;
-		if(fits_long && !expr->marker.default_value->value.v_integer)
-			expr->marker.flags &= ~EM_INDIRECT;
-		if(!out) {
-            if(C99_MODE) OUT(".default_value_cmp = ");
-			OUT("&asn_DFL_%d_cmp_%s,",
-				expr->_type_unique_index,
-				default_name);
-            OUT("\t/* Compare DEFAULT %s */\n",
-				asn1p_itoa(expr->marker.default_value->value.v_integer));
-            if(C99_MODE) OUT(".default_value_set = ");
-			OUT("&asn_DFL_%d_set_%s,",
-				expr->_type_unique_index,
-				default_name);
-            OUT("\t/* Set DEFAULT %s */\n",
-				asn1p_itoa(expr->marker.default_value->value.v_integer));
-			return 1;
-		}
-		REDIR(OT_STAT_DEFS);
-
-		OUT("static int asn_DFL_%d_cmp_%s(const void *sptr) {\n",
-			expr->_type_unique_index,
-			default_name);
-		INDENT(+1);
-		OUT("const %s *st = sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
-		OUT("\n");
-		OUT("if(!st) {\n");
-        OUT("\treturn -1; /* No value is not a default value */\n");
-		OUT("}\n");
-		OUT("\n");
-		OUT("/* Test default value %s */\n",
-			asn1p_itoa(expr->marker.default_value->value.v_integer));
-		if(fits_long) {
-			OUT("return (*st != %s);\n",
-				asn1p_itoa(expr->marker.default_value->value.v_integer));
-		} else {
-			OUT("long value;\n");
-			OUT("if(asn_INTEGER2long(st, &value))\n");
-			OUT("\treturn -1;\n");
-			OUT("return (value != %s);\n",
-				asn1p_itoa(expr->marker.default_value->value.v_integer));
-		}
-		INDENT(-1);
-		OUT("}\n");
-
-		OUT("static int asn_DFL_%d_set_%s(void **sptr) {\n",
-			expr->_type_unique_index,
-			default_name);
-		INDENT(+1);
-		OUT("%s *st = *sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
-		OUT("\n");
-		OUT("if(!st) {\n");
-		OUT("\tst = (*sptr = CALLOC(1, sizeof(*st)));\n");
-		OUT("\tif(!st) return -1;\n");
-		OUT("}\n");
-		OUT("\n");
-		OUT("/* Install default value %s */\n",
-			asn1p_itoa(expr->marker.default_value->value.v_integer));
-		if(fits_long) {
-			OUT("*st = ");
-			OINT(expr->marker.default_value->value.v_integer);
-			OUT(";\n");
-			OUT("return 0;\n");
-		} else {
-			OUT("return asn_long2INTEGER(st, ");
-			OINT(expr->marker.default_value->value.v_integer);
-			OUT(");\n");
-		}
-		INDENT(-1);
-		OUT("}\n");
-
-		REDIR(save_target);
+	if(!expr->marker.default_value
+	|| expr->marker.default_value->type != ATV_REAL
+	|| format_real_default(expr->marker.default_value->value.v_double,
+	                       literal, sizeof(literal))) return 0;
+	ctype = asn1c_type_name(arg, expr, TNF_CTYPE);
+	native_real = !(arg->flags & A1C_USE_WIDE_TYPES)
+	              || asn1c_REAL_fits(arg, expr) != RL_NOTFIT;
+	if(!out) {
+		if(C99_MODE) OUT(".default_value_cmp = ");
+		OUT("&asn_DFL_%d_cmp,\t/* Compare DEFAULT REAL */\n", type_index);
+		if(C99_MODE) OUT(".default_value_set = ");
+		OUT("&asn_DFL_%d_set,\t/* Set DEFAULT REAL */\n", type_index);
 		return 1;
-	case ASN_BASIC_NULL:
-		//expr->marker.flags &= ~EM_INDIRECT;
-		return 0;
-	default:
-	  if(expr->marker.default_value) {
-	    if(!(etype & ASN_STRING_KM_MASK) &&
-		(expr->marker.default_value->type != ATV_STRING) &&
-		(expr->marker.default_value->type != ATV_BITVECTOR))
-			break;
-		if(!out) {
-            if(C99_MODE) OUT(".default_value_cmp = ");
-			OUT("&asn_DFL_%d_cmp,\t/* Compare DEFAULT \"%s\" */\n",
-				expr->_type_unique_index,
-				expr->marker.default_value->value.string.buf);
-            if(C99_MODE) OUT(".default_value_set = ");
-			OUT("&asn_DFL_%d_set,\t/* Set DEFAULT \"%s\" */\n",
-				expr->_type_unique_index,
-				expr->marker.default_value->value.string.buf);
-			return 1;
-		}
-		REDIR(OT_STAT_DEFS);
+	}
 
-        OUT("static int asn_DFL_%d_cmp(const void *sptr) {\n",
-            expr->_type_unique_index);
-        INDENT(+1);
+	REDIR(OT_STAT_DEFS);
+	OUT("#include <math.h>\n");
+	OUT("static int asn_DFL_%d_cmp(const void *sptr) {\n", type_index);
+	INDENT(+1);
+	OUT("if(!sptr) return -1;\n");
+	if(native_real) {
+		OUT("const %s *st = (const %s *)sptr;\n", ctype, ctype);
+		OUT("double value = (double)*st;\n");
+	} else {
+		OUT("double value;\n");
+		OUT("if(asn_REAL2double((const REAL_t *)sptr, &value)) return -1;\n");
+	}
+	if(native_real) {
+		OUT("if(isnan(value)) return isnan((double)(%s)(%s)) ? 0 : 1;\n",
+		    ctype, literal);
+		OUT("return (value != (double)(%s)(%s));\n", ctype, literal);
+	} else {
+		OUT("if(isnan(value)) return isnan((double)(%s)) ? 0 : 1;\n",
+		    literal);
+		OUT("return (value != (double)(%s));\n", literal);
+	}
+	INDENT(-1);
+	OUT("}\n");
+
+	OUT("static int asn_DFL_%d_set(void **sptr) {\n", type_index);
+	INDENT(+1);
+	OUT("%s *st = *sptr;\n", ctype);
+	if(!native_real) OUT("int allocated = 0;\n");
+	OUT("if(!st) {\n");
+	INDENT(+1);
+	OUT("st = (*sptr = CALLOC(1, sizeof(*st)));\n");
+	OUT("if(!st) return -1;\n");
+	if(!native_real) OUT("allocated = 1;\n");
+	INDENT(-1);
+	OUT("}\n");
+	if(native_real) {
+		OUT("*st = (%s)(%s);\n", ctype, literal);
+		OUT("return 0;\n");
+	} else {
+		OUT("if(asn_double2REAL((REAL_t *)st, (double)(%s))) {\n", literal);
+		INDENT(+1);
+		OUT("if(allocated) {\n");
+		INDENT(+1);
+		OUT("ASN_STRUCT_FREE(asn_DEF_REAL, st);\n");
+		OUT("*sptr = 0;\n");
+		INDENT(-1);
+		OUT("}\n");
+		OUT("return -1;\n");
+		INDENT(-1);
+		OUT("}\n");
+		OUT("return 0;\n");
+	}
+	INDENT(-1);
+	OUT("}\n");
+	REDIR(save_target);
+	return 1;
+}
+
+/*
+ * Emit the scalar DEFAULT comparison callback body.
+ * Inputs: arg/expr identify storage; etype and fits_long select comparison mode;
+ * default_name is the safe callback suffix.
+ * Returns no value; generated code is written to the redirected output target.
+ * Errors: the generator output layer records write failures.
+ * Source: ASN.1 DEFAULT callback contract. Version/date: 2026-11-01.
+ * Responsible party: asn1c maintainers. History: split from try_inline_default.
+ * Example: BOOLEAN DEFAULT TRUE compares nonzero values as true.
+ */
+static void
+emit_scalar_default_cmp(arg_t *arg, asn1p_expr_t *expr,
+                        asn1p_expr_type_e etype, int fits_long,
+                        const char *default_name) {
+	OUT("static int asn_DFL_%d_cmp_%s(const void *sptr) {\n",
+		expr->_type_unique_index, default_name);
+	INDENT(+1);
+	OUT("const %s *st = sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
+	OUT("\n");
+	OUT("if(!st) {\n");
+	OUT("\treturn -1; /* No value is not a default value */\n");
+	OUT("}\n");
+	OUT("\n");
+	OUT("/* Test default value %s */\n",
+		asn1p_itoa(expr->marker.default_value->value.v_integer));
+	if(etype == ASN_BASIC_BOOLEAN) {
+		OUT("return ((*st != 0) != %d);\n",
+			expr->marker.default_value->value.v_integer != 0);
+	} else if(fits_long) {
+		OUT("return (*st != %s);\n",
+			asn1p_itoa(expr->marker.default_value->value.v_integer));
+	} else {
+		OUT("long value;\n");
+		OUT("if(asn_INTEGER2long(st, &value))\n");
+		OUT("\treturn -1;\n");
+		OUT("return (value != %s);\n",
+			asn1p_itoa(expr->marker.default_value->value.v_integer));
+	}
+	INDENT(-1);
+	OUT("}\n");
+}
+
+/*
+ * Emit the scalar DEFAULT setter callback.
+ * Inputs: arg/expr identify storage; fits_long selects native or INTEGER_t;
+ * default_name is the safe callback suffix.
+ * Returns no value; generated code is written to the redirected output target.
+ * Errors: the generator output layer records write failures.
+ * Source: ASN.1 DEFAULT callback contract. Version/date: 2026-11-01.
+ * Responsible party: asn1c maintainers. History: split from try_inline_default.
+ * Example: bounded INTEGER DEFAULT 1 uses its selected C storage.
+ */
+static void
+emit_scalar_default_set(arg_t *arg, asn1p_expr_t *expr, int fits_long,
+                        const char *default_name) {
+	OUT("static int asn_DFL_%d_set_%s(void **sptr) {\n",
+		expr->_type_unique_index, default_name);
+	INDENT(+1);
+	OUT("%s *st = *sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
+	OUT("\n");
+	OUT("if(!st) {\n");
+	OUT("\tst = (*sptr = CALLOC(1, sizeof(*st)));\n");
+	OUT("\tif(!st) return -1;\n");
+	OUT("}\n");
+	OUT("\n");
+	OUT("/* Install default value %s */\n",
+		asn1p_itoa(expr->marker.default_value->value.v_integer));
+	if(fits_long) {
+		OUT("*st = ");
+		OINT(expr->marker.default_value->value.v_integer);
+		OUT(";\n");
+		OUT("return 0;\n");
+	} else {
+		OUT("return asn_long2INTEGER(st, ");
+		OINT(expr->marker.default_value->value.v_integer);
+		OUT(");\n");
+	}
+	INDENT(-1);
+	OUT("}\n");
+}
+
+/*
+ * Emit scalar DEFAULT callback references when writing a type descriptor.
+ * Inputs: arg is the generator context; expr owns the DEFAULT; default_name
+ * is its safe C suffix.
+ * Returns one after emitting both references. Errors: output errors are tracked.
+ * Source: generated descriptor callback fields. Version/date: 2026-11-01.
+ * Responsible party: asn1c maintainers. History: split scalar DEFAULT handling.
+ * Example: INTEGER DEFAULT 1 references its cmp_1 and set_1 callbacks.
+ */
+static int
+emit_scalar_default_refs(arg_t *arg, asn1p_expr_t *expr,
+                         const char *default_name) {
+	if(C99_MODE) OUT(".default_value_cmp = ");
+	OUT("&asn_DFL_%d_cmp_%s,", expr->_type_unique_index, default_name);
+	OUT("\t/* Compare DEFAULT %s */\n",
+		asn1p_itoa(expr->marker.default_value->value.v_integer));
+	if(C99_MODE) OUT(".default_value_set = ");
+	OUT("&asn_DFL_%d_set_%s,", expr->_type_unique_index, default_name);
+	OUT("\t/* Set DEFAULT %s */\n",
+		asn1p_itoa(expr->marker.default_value->value.v_integer));
+	return 1;
+}
+
+/*
+ * Emit compare/set callbacks for BOOLEAN, INTEGER, or ENUMERATED DEFAULT.
+ * Inputs: arg/expr identify the member; out is zero for descriptor references
+ * or nonzero for callback definitions; etype selects the scalar kind.
+ * Returns one when supported, zero otherwise. Errors: names that do not fit
+ * the local buffer are unsupported. Source: generated C DEFAULT callbacks.
+ * Version/date: 2026-11-01. Responsible party: asn1c maintainers.
+ * History: storage-aware scalar callbacks. Example: BOOLEAN DEFAULT TRUE.
+ */
+static int
+try_inline_scalar_default(arg_t *arg, asn1p_expr_t *expr, int out,
+                          asn1p_expr_type_e etype) {
+	int fits_long = etype == ASN_BASIC_BOOLEAN; /* Scalar storage state variable. */
+	int save_target; /* Output redirection restoration state variable. */
+	char default_name[128];
+	if(!expr->marker.default_value
+	|| (expr->marker.default_value->type != ATV_INTEGER
+	    && expr->marker.default_value->type != ATV_TRUE
+	    && expr->marker.default_value->type != ATV_FALSE)) return 0;
+	if(asn1p_itoa_s(default_name, sizeof(default_name),
+	                expr->marker.default_value->value.v_integer) < 0) return 0;
+	if(default_name[0] == '-') default_name[0] = 'm';
+	if(etype == ASN_BASIC_INTEGER)
+		fits_long = asn1c_select_integer_storage(arg, expr) != AISK_INTEGER_T;
+	else if(!fits_long)
+		fits_long = asn1c_type_fits_long(arg, expr) != FL_NOTFIT;
+	if(fits_long && !expr->marker.default_value->value.v_integer)
+		expr->marker.flags &= ~EM_INDIRECT;
+	if(!out) return emit_scalar_default_refs(arg, expr, default_name);
+	save_target = arg->target->target;
+	REDIR(OT_STAT_DEFS);
+	emit_scalar_default_cmp(arg, expr, etype, fits_long, default_name);
+	emit_scalar_default_set(arg, expr, fits_long, default_name);
+	REDIR(save_target);
+	return 1;
+}
+
+/*
+ * Emit DEFAULT callbacks for string and bit-string values.
+ * Inputs: arg/expr identify the member; out is zero for descriptor references
+ * or nonzero for callback definitions;
+ * etype contains its fixed-tree type. Returns one when supported, else zero.
+ * Errors: output failures are recorded by the generator. Source: C descriptors.
+ * Version/date: 2026-11-01. Responsible party: asn1c maintainers.
+ * History: split the blob branch from try_inline_default.
+ * Example: OCTET STRING DEFAULT 'AB'H uses byte comparison callbacks.
+ */
+static int
+try_inline_blob_default(arg_t *arg, asn1p_expr_t *expr, int out,
+			asn1p_expr_type_e etype) {
+	int save_target = arg->target->target; /* Output redirection restoration state variable. */
+	if(!expr->marker.default_value
+	|| (!(etype & ASN_STRING_KM_MASK)
+	    && expr->marker.default_value->type != ATV_STRING
+	    && expr->marker.default_value->type != ATV_BITVECTOR)) return 0;
+	if(!out) {
+		if(C99_MODE) OUT(".default_value_cmp = ");
+		OUT("&asn_DFL_%d_cmp,\t/* Compare DEFAULT \"%s\" */\n",
+			expr->_type_unique_index, expr->marker.default_value->value.string.buf);
+		if(C99_MODE) OUT(".default_value_set = ");
+		OUT("&asn_DFL_%d_set,\t/* Set DEFAULT \"%s\" */\n",
+			expr->_type_unique_index, expr->marker.default_value->value.string.buf);
+		return 1;
+	}
+	REDIR(OT_STAT_DEFS);
+	OUT("static int asn_DFL_%d_cmp(const void *sptr) {\n",
+		expr->_type_unique_index);
+	INDENT(+1);
 	if(expr->marker.default_value->type == ATV_STRING)
 		emit_default_string_value(arg, expr->marker.default_value);
 	else
 		emit_default_bitstring_value(arg, expr->marker.default_value);
-        OUT("const %s *st = sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
-        OUT("\n");
-        OUT("if(!st) {\n");
-        OUT("\treturn -1; /* No value is not a default value */\n");
-        OUT("}\n");
-		OUT("\n");
+	OUT("const %s *st = sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
+	OUT("\n");
+	OUT("if(!st) {\n");
+	OUT("\treturn -1; /* No value is not a default value */\n");
+	OUT("}\n");
+	OUT("\n");
 	if(expr->marker.default_value->type == ATV_STRING) {
 		OUT("if(st->size == (sizeof(defv) - 1)\n");
 		OUT("&& memcmp(st->buf, &defv, sizeof(defv) - 1) == 0)\n");
@@ -4494,49 +5093,65 @@ try_inline_default(arg_t *arg, asn1p_expr_t *expr, int out) {
 		OUT("if(st->size == (sizeof(defv))\n");
 		OUT("&& memcmp(st->buf, &defv, sizeof(defv)) == 0)\n");
 	}
-        OUT("\treturn 0;\n");
-        OUT("return 1;\n");
-		INDENT(-1);
-		OUT("}\n");
-
-        OUT("static int asn_DFL_%d_set(void **sptr) {\n",
-            expr->_type_unique_index);
-        INDENT(+1);
-        if(expr->marker.default_value->type == ATV_STRING)
-            emit_default_string_value(arg, expr->marker.default_value);
-        else
-            emit_default_bitstring_value(arg, expr->marker.default_value);
-		OUT("%s *st = *sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
-        OUT("uint8_t *nstr = MALLOC(sizeof(defv));\n");
-		OUT("\n");
-        OUT("if(!nstr) return -1;\n");
-        OUT("memcpy(nstr, defv, sizeof(defv));\n");
-        OUT("\n");
-		OUT("if(st) {\n");
-		OUT("\tFREEMEM(st->buf);\n");
-		OUT("} else {\n");
-		OUT("\tst = (*sptr = CALLOC(1, sizeof(*st)));\n");
-		OUT("\tif(!st) { FREEMEM(nstr); return -1; }\n");
-		OUT("}\n");
-		OUT("st->buf = nstr;\n");
-      if(expr->marker.default_value->type == ATV_STRING) {
-          OUT("st->size = sizeof(defv) - 1;\n");
-      } else {
-          OUT("st->size = sizeof(defv);\n");
-          if(etype == ASN_BASIC_BIT_STRING)
-              OUT("st->bits_unused = %d;\n", (8 - expr->marker.default_value->value.binary_vector.size_in_bits % 8) % 8);
-      }
-		OUT("\n");
-		OUT("return 0;\n");
-		INDENT(-1);
-		OUT("}\n");
-
-		REDIR(save_target);
-		return 1;
-	  }
-	  break;
+	OUT("\treturn 0;\n");
+	OUT("return 1;\n");
+	INDENT(-1);
+	OUT("}\n");
+	OUT("static int asn_DFL_%d_set(void **sptr) {\n", expr->_type_unique_index);
+	INDENT(+1);
+	if(expr->marker.default_value->type == ATV_STRING)
+		emit_default_string_value(arg, expr->marker.default_value);
+	else
+		emit_default_bitstring_value(arg, expr->marker.default_value);
+	OUT("%s *st = *sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
+	OUT("uint8_t *nstr = MALLOC(sizeof(defv));\n");
+	OUT("\n");
+	OUT("if(!nstr) return -1;\n");
+	OUT("memcpy(nstr, defv, sizeof(defv));\n");
+	OUT("\n");
+	OUT("if(st) {\n");
+	OUT("\tFREEMEM(st->buf);\n");
+	OUT("} else {\n");
+	OUT("\tst = (*sptr = CALLOC(1, sizeof(*st)));\n");
+	OUT("\tif(!st) { FREEMEM(nstr); return -1; }\n");
+	OUT("}\n");
+	OUT("st->buf = nstr;\n");
+	if(expr->marker.default_value->type == ATV_STRING) {
+		OUT("st->size = sizeof(defv) - 1;\n");
+	} else {
+		OUT("st->size = sizeof(defv);\n");
+		if(etype == ASN_BASIC_BIT_STRING)
+			OUT("st->bits_unused = %d;\n",
+				(8 - expr->marker.default_value->value.binary_vector.size_in_bits % 8) % 8);
 	}
-	return 0;
+	OUT("\n");
+	OUT("return 0;\n");
+	INDENT(-1);
+	OUT("}\n");
+	REDIR(save_target);
+	return 1;
+}
+
+/*
+ * Purpose: dispatch inline DEFAULT callbacks for primitive ASN.1 members.
+ * Inputs: arg is generator context; expr is a member; out is zero for descriptor
+ * references or nonzero for callback definitions.
+ * Returns one when emitted, zero for unsupported DEFAULTs. Errors: the output
+ * and allocation layers report failures; this helper raises no exceptions.
+ * Original source: asn1c C generator, split to keep each unit bounded.
+ * Version/date: 1.2, 2026-11-01. Responsible party: asn1c maintainers.
+ * History: storage-aware callbacks; BOOLEAN comparison now uses truth values.
+ * Example: BOOLEAN DEFAULT TRUE compares `0xff` as true.
+ */
+static int
+try_inline_default(arg_t *arg, asn1p_expr_t *expr, int out) {
+	asn1p_expr_type_e etype = expr_get_type(arg, expr);
+	if(etype == ASN_BASIC_BOOLEAN || etype == ASN_BASIC_INTEGER
+	|| etype == ASN_BASIC_ENUMERATED)
+		return try_inline_scalar_default(arg, expr, out, etype);
+	if(etype == ASN_BASIC_REAL) return try_inline_real_default(arg, expr, out);
+	if(etype == ASN_BASIC_NULL) return 0;
+	return try_inline_blob_default(arg, expr, out, etype);
 }
 
 static int
@@ -4648,7 +5263,8 @@ emit_member_type_selector(arg_t *arg, asn1p_expr_t *expr, asn1c_ioc_table_and_ob
 
     asn1p_expr_t *constraining_memb = NULL;
     TQ_FOR(constraining_memb, &(parent_expr->members), next) {
-        if(strcmp(constraining_memb->Identifier, cname) == 0) {
+        if(constraining_memb->Identifier
+        && strcmp(constraining_memb->Identifier, cname) == 0) {
             break;
         }
     }
@@ -4781,8 +5397,10 @@ emit_member_type_selector(arg_t *arg, asn1p_expr_t *expr, asn1c_ioc_table_and_ob
     OUT("\n");
 
     OUT("for(row=0; row < itable->rows_count; row++) {\n");
-    OUT("    const asn_ioc_cell_t *constraining_cell = &itable->rows[row * itable->columns_count + constraining_column];\n");
-    OUT("    const asn_ioc_cell_t *type_cell = &itable->rows[row * itable->columns_count + for_column];\n");
+    OUT("    const asn_ioc_cell_t *constraining_cell = "
+        "&itable->rows[row * itable->columns_count + constraining_column];\n");
+    OUT("    const asn_ioc_cell_t *type_cell = "
+        "&itable->rows[row * itable->columns_count + for_column];\n");
     OUT("\n");
     OUT("    if(type_cell->cell_kind == aioc__undefined)\n");
     OUT("        continue;\n");
@@ -4795,7 +5413,9 @@ emit_member_type_selector(arg_t *arg, asn1p_expr_t *expr, asn1c_ioc_table_and_ob
     OUT("       || !constraining_cell->value_sptr\n");
     OUT("       || !type_cell->type_descriptor)\n");
     OUT("        continue;\n");
-    OUT("    if(constraining_cell->type_descriptor->op->compare_struct(constraining_cell->type_descriptor, constraining_value, constraining_cell->value_sptr) == 0) {\n");
+    OUT("    if(constraining_cell->type_descriptor->op->compare_struct("
+        "constraining_cell->type_descriptor, constraining_value, "
+        "constraining_cell->value_sptr) == 0) {\n");
     OUT("        result.type_descriptor = type_cell->type_descriptor;\n");
     OUT("        result.presence_index = presence_index;\n");
     OUT("        break;\n");
@@ -4917,7 +5537,14 @@ emit_member_layout(arg_t *arg, asn1p_expr_t *expr, asn1c_ioc_table_and_objset_t 
 
 	OUT(",\n");
 	if(C99_MODE) OUT(".tag_mode = ");
-	if((!(expr->expr_type &  ASN_CONSTR_MASK)
+	if(expr->expr_type == ASN_BASIC_ENUMERATED
+	   && outmost_tag
+	   && outmost_tag->tag_class == TC_CONTEXT_SPECIFIC
+	   && expr->tag.tag_class == TC_CONTEXT_SPECIFIC
+	   && expr->tag.tag_mode == TM_EXPLICIT) {
+		/* The embedded ENUMERATED descriptor already emits its explicit tag. */
+		OUT("0,\t/* Explicit tag is carried by the embedded ENUMERATED descriptor */\n");
+	} else if((!(expr->expr_type &  ASN_CONSTR_MASK)
 	   || expr->expr_type == ASN_CONSTR_CHOICE)
 	&& expr->tag.tag_class) {
 		if(expr->tag.tag_mode == TM_IMPLICIT)
@@ -5164,6 +5791,7 @@ emit_member_constraint_code(arg_t *arg, asn1p_expr_t *expr,
 	arg_t tmp_arg;
 	const char *p;
 
+	if(asn1c_check_contained_type(arg, expr)) return -1;
 	if(!expr->constraints || (arg->flags & A1C_NO_CONSTRAINTS)) {
 		if(emit_member_JER_constraints(arg, expr, "memb", suffix_index))
 			return -1;
@@ -5185,7 +5813,9 @@ emit_member_constraint_code(arg_t *arg, asn1p_expr_t *expr,
 	tmp_arg = *arg;
 	tmp_arg.expr = expr;
 	DEBUG("member constraint checking code for %s", p);
-	if(asn1c_emit_constraint_checking_code(&tmp_arg) == 1) {
+	int constraint_result = asn1c_emit_constraint_checking_code(&tmp_arg);
+	if(constraint_result < 0) return -1;
+	if(constraint_result == 1) {
 		OUT("return td->encoding_constraints.general_constraints"
 			"(td, sptr, ctfailcb, app_key);\n");
 	}
@@ -5306,7 +5936,9 @@ emit_collection_constraint(arg_t *arg, asn1p_expr_t *expr) {
 
 	constraint_arg = *arg;
 	constraint_arg.expr = expr;
-	if(asn1c_emit_constraint_checking_code(&constraint_arg) == 1) {
+	int constraint_result = asn1c_emit_constraint_checking_code(&constraint_arg);
+	if(constraint_result < 0) return -1;
+	if(constraint_result == 1) {
 		const char *constraint_name =
 			expr_get_type(&constraint_arg, expr) == ASN_CONSTR_SET_OF
 				? "SET_OF_constraint"
@@ -5540,10 +6172,7 @@ emit_type_DEF(arg_t *arg, asn1p_expr_t *expr, enum tvm_compat tv_mode,
         OUT_NOINDENT("#endif  /* !defined(ASN_DISABLE_OER_SUPPORT) */\n");
         OUT_NOINDENT("#if !defined(ASN_DISABLE_UPER_SUPPORT) || !defined(ASN_DISABLE_APER_SUPPORT)\n");
 		if(arg->flags & (A1C_GEN_UPER | A1C_GEN_APER)) {
-            if(expr->combined_constraints
-               || terminal_etype == ASN_BASIC_ENUMERATED
-               || terminal_etype == ASN_CONSTR_CHOICE
-               || (terminal_etype & ASN_STRING_KM_MASK)) {
+            if(member_has_per_constraints(expr, terminal_etype)) {
                 OUT("&asn_PER_type_%s_constr_%d",
 					expr_id, expr->_type_unique_index);
 			} else {
@@ -5856,9 +6485,10 @@ emit_include_dependencies(arg_t *arg) {
 			 * This fix is critical for specifications like F1AP that use parameterized
 			 * types with IOC fields.
 			 */
-			int is_ioc_field = (memb->reference 
+			int is_ioc_field = (memb->reference
 			                    && memb->reference->comp_count >= 2
-			                    && memb->reference->components[memb->reference->comp_count - 1].name[0] == '&');
+			                    && memb->reference->components[
+			                        memb->reference->comp_count - 1].name[0] == '&');
 			GEN_POS_INCLUDE_BASE((memb->marker.flags & EM_UNRECURSE) && !is_ioc_field ?
 					OT_POST_INCLUDE : OT_INCLUDES, memb);
 		}

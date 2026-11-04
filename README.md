@@ -56,7 +56,7 @@ groups, and implied ENUMERATED extensibility (#582–#584). Regenerate C output
 with the matching updated runtime because SEQUENCE group descriptors now carry
 additional metadata. The follow-up [SET extension-group notes](docs/set-extension-groups.md)
 describe transparent SET groups, regenerated descriptor layout, stack bounds,
-and the current PER support boundary.
+and UPER, APER, OER, and JER group support.
 
 The [incremental JER design proposal](docs/jer-streaming-design.md) describes
 how to progress from buffering one PDU to decoding large messages in chunks,
@@ -124,12 +124,37 @@ universal OCTET STRING tags for the fragments; BIT STRING fragments use their
 universal BIT STRING tag. BER input also preserves legacy opaque `ANY`
 containers under the bounds described in that audit.
 
-In Rust output mode, the current CER encoder supports top-level BOOLEAN, NULL,
-and finite, nonextensible INTEGER values whose bounds fit signed 64-bit
-integers. Rust CER output is selected by default with UPER; `-no-gen-UPER`
-selects CER-only output. Generated Rust types also provide a strict
-`decode_cer()` that accepts only the canonical short-form CER TLV. See
-[Rust output usage and limits](docs/rust/implementation.md).
+In Rust output mode, CER supports top-level BOOLEAN, NULL, finite
+nonextensible INTEGER values whose bounds fit signed 64-bit integers, direct
+nonextensible ENUMERATED values fitting signed 64-bit integers, and direct
+fixed or bounded BIT STRING and OCTET STRING values with supported finite
+`SIZE` constraints. Long strings use CER fragmentation; `decode_cer()`
+re-encodes and compares the consumed prefix to reject noncanonical forms.
+Flat SEQUENCE records with an untagged outer type and distinct effective tags
+for direct BOOLEAN, NULL, bounded INTEGER, ENUMERATED, and finite bounded
+BIT/OCTET STRING fields also support
+required and OPTIONAL members, literal BOOLEAN/INTEGER DEFAULT members, and
+an empty record. Their BER/DER/CER operations share one record-wide resource
+budget.
+Flat SET records with an untagged outer type support the same six direct field kinds
+under BER/DER/CER-only selection (`-no-gen-UPER`), with unordered BER field
+decoding and canonical tag-ordered DER/CER output. The current XER-only SET
+slice remains a separate codec selection.
+The same flat BER/DER/CER records accept resolved context-specific IMPLICIT
+member tags, including automatic tags, and one context-specific EXPLICIT
+wrapper per direct field. High tag numbers within the C runtime's range and
+repeated primitive kinds with distinct effective tags are supported; SET
+output sorts by effective class and tag number. One nonrecursive inline
+SEQUENCE child is supported in an untagged SEQUENCE or BER/CER-only SET, with
+required or OPTIONAL direct primitive leaves and a shared resource budget.
+Root tags, multi-tag stacks, aliases, and deeper constructed records remain
+outside this slice.
+Rust CER output is selected by default with UPER; `-no-gen-UPER` selects
+CER-only output. `-gen-BER` adds BER prefix decoding and DER encoding for
+these direct types. See [Rust output usage and limits](docs/rust/implementation.md)
+and the [parity design](docs/rust/ber-der-cer-design.md) for remaining gaps.
+The same primitive Rust subset also supports opt-in APER and OER encoding and
+decoding with `-gen-APER` and `-gen-OER`.
 
 Basic/canonical OER, UPER, and APER selectors share each family's decoder;
 CBOR has its own encoder and decoder. Support still depends on the generated
@@ -176,12 +201,27 @@ for a short installation guide.
 
 ## Documentation
 
-`--rust` selects native Rust output as a complete compiler mode. The current
-implementation generates a standalone Cargo package with safe, dependency-free
-UPER encode/decode and CER encoding and strict decoding for BOOLEAN, NULL, and
-finite nonextensible INTEGER ranges fitting `i64`. Unsupported schemas, codec
-requests, and C-specific output options fail with diagnostics. Build the
-generated package with Cargo in offline mode.
+`--rust` selects native Rust output as a complete compiler mode. It generates a
+standalone Cargo package with safe, dependency-free UPER and CER codecs for
+BOOLEAN, NULL, and finite nonextensible INTEGER ranges fitting `i64`.
+APER, OER, BER/DER, and JER are available for selected direct primitive types
+when explicitly enabled. Unsupported schemas, codec requests, and C-specific
+output options fail with diagnostics. Build the generated package with Cargo
+in offline mode.
+
+With UPER as the only selected codec (`-no-gen-CER`), SEQUENCE assignments can
+contain required, OPTIONAL, and supported primitive DEFAULT fields, including
+inline nested SEQUENCE records. A shared cursor enforces one resource budget
+across the complete value. Direct fixed-size OCTET STRING and BIT STRING types,
+and either string type with one bounded contiguous `SIZE` range below 65536,
+support UPER, including required and OPTIONAL SEQUENCE fields. Bounded BIT
+STRING values carry their exact meaningful bit length. Direct
+nonextensible ENUMERATED assignments use UPER indexes in numeric value order.
+ENUMERATED and direct fixed-size or bounded OCTET STRING assignments can also
+opt into JER.
+Direct fixed-size and bounded BIT STRING assignments support the C-compatible
+JER hexadecimal forms, including the bit length for bounded values.
+Named-bit lists and other unsupported forms are rejected with diagnostics.
 
 See [the initial implementation](docs/rust/implementation.md) for usage and
 limits, and [the conversion plan](docs/rust/README.md) for incremental delivery

@@ -1,13 +1,18 @@
 {
-  "suite": "generated Rust stage-one primitive UPER, CER, and BER/DER slice",
-  "scope": "Only the listed nonextensible primitive subset is qualified.",
+  "suite": "generated Rust primitive codecs, collections, structured BER/CER records, and packed encodings",
+  "scope": "Only the listed nonextensible primitive, collection, and constructed subsets are qualified.",
   "cases": [
     {
       "asn1_type": "BOOLEAN",
       "feature": "primitive, nonextensible",
       "codec": "UPER",
-      "variants": ["basic/default UPER API"],
-      "directions": ["encode", "decode"],
+      "variants": [
+        "basic/default UPER API"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
       "status": "tested",
       "evidence": "conformance.rs; c_reference.c"
     },
@@ -15,8 +20,13 @@
       "asn1_type": "NULL",
       "feature": "primitive, nonextensible, zero-width complete value",
       "codec": "UPER",
-      "variants": ["basic/default UPER API"],
-      "directions": ["encode", "decode"],
+      "variants": [
+        "basic/default UPER API"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
       "status": "tested",
       "evidence": "conformance.rs; c_reference.c"
     },
@@ -24,8 +34,13 @@
       "asn1_type": "INTEGER",
       "feature": "bounded signed i64, nonextensible, range -10..10",
       "codec": "UPER",
-      "variants": ["basic/default UPER API"],
-      "directions": ["encode", "decode"],
+      "variants": [
+        "basic/default UPER API"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
       "status": "tested_with_live_C_comparison",
       "evidence": "conformance.rs; c_reference.c"
     },
@@ -33,8 +48,13 @@
       "asn1_type": "INTEGER",
       "feature": "singleton range 5..5",
       "codec": "UPER",
-      "variants": ["basic/default UPER API"],
-      "directions": ["encode", "decode"],
+      "variants": [
+        "basic/default UPER API"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
       "status": "tested_with_live_C_comparison",
       "evidence": "conformance.rs; c_reference.c"
     },
@@ -42,17 +62,462 @@
       "asn1_type": "INTEGER",
       "feature": "full signed i64 range",
       "codec": "UPER",
-      "variants": ["basic/default UPER API"],
-      "directions": ["encode", "decode"],
+      "variants": [
+        "basic/default UPER API"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
       "status": "tested_against_fixed_golden_vectors",
       "evidence": "conformance.rs"
+    },
+    {
+      "asn1_type": "INTEGER",
+      "feature": "unconstrained arbitrary-precision signed value",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "zero and signed one-byte boundaries",
+        "i64 minimum and maximum",
+        "positive 2^64 and negative 2^65",
+        "129-octet content",
+        "BER redundant sign and universal high-tag aliases"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_wide_C_comparison",
+      "evidence": "big_integer_conformance.rs; c_big_integer.c; BigInteger.asn1"
+    },
+    {
+      "asn1_type": "unconstrained INTEGER record member",
+      "feature": "one direct natural required or OPTIONAL field in flat SEQUENCE/SET",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "wide signed boundaries and 127/128/129/1000/1001-octet contents",
+        "required and OPTIONAL fields beside BOOLEAN and OCTET STRING",
+        "OPTIONAL absence and presence for SEQUENCE and SET",
+        "SET full effective-tag ordering and reversed BER acceptance",
+        "BER aliases and redundant signs with strict CER rejection",
+        "malformed, truncated, mutated, prefix, and resource-limit inputs"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_wide_C_comparison",
+      "evidence": "BigIntegerRecord.asn1; big_integer_record_conformance.rs; c_big_integer_record.c"
+    },
+    {
+      "asn1_type": "same-module named bounded INTEGER record member",
+      "feature": "one direct required or OPTIONAL reference to a finite contiguous i64 range in flat SEQUENCE/SET",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "checked newtype with natural, context IMPLICIT, and EXPLICIT member tags",
+        "SEQUENCE and SET required/OPTIONAL fields with scalar and bounded BIT siblings",
+        "BER unordered SET members and high-tag aliases with strict CER rejection",
+        "C BER range check deferred to asn_check_constraints",
+        "prefix, malformed input, and pinned work/resource limits"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "NamedIntegerRecord.asn1; named_integer_record_conformance.rs; c_named_integer_record.c"
+    },
+    {
+      "asn1_type": "transparent same-module bounded INTEGER alias",
+      "feature": "one unconstrained alias hop to a direct finite contiguous i64 INTEGER, standalone or one named record field",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "forward declarations, shared Rust identity, checked constructors and selected public methods",
+        "natural, IMPLICIT, EXPLICIT and OPTIONAL record fields with shared parent context",
+        "signed and singleton bounds, scalar DEFAULT siblings and canonical SET ordering",
+        "prefixes, malformed inputs, explicit DEFAULT CER rejection and exact resource thresholds",
+        "unused metadata validation, unsupported codec selections and no output publication"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "AliasInteger*.asn1; alias_integer_identity_conformance.rs; reused named_integer_record_conformance.rs; c_alias_integer_identity.c; reused c_named_integer_record.c; check-rust-aliases.sh"
+    },
+    {
+      "asn1_type": "same-module named SEQUENCE child",
+      "feature": "one required or OPTIONAL same-module untagged SEQUENCE target in flat SEQUENCE/SET",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "natural, context IMPLICIT, and EXPLICIT child tags under SEQUENCE and SET",
+        "empty child, parent BOOLEAN/INTEGER DEFAULT siblings, and child ENUMERATED/BIT/OCTET leaves",
+        "SET ordering, BER reversal, high-tag aliases, malformed and mixed wrapper frames",
+        "prefixes, truncations, mutations, bounded values, and pinned shared work"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "NamedSequence*.asn1; named_sequence*_conformance.rs; c_named_sequence*.c"
+    },
+    {
+      "asn1_type": "same-module named SET child",
+      "feature": "one required or OPTIONAL same-module untagged SET target in flat SEQUENCE/SET",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "natural, context IMPLICIT, and EXPLICIT child tags under both parent kinds",
+        "nonempty child with bounded INTEGER and BOOLEAN leaves; parent literal DEFAULT",
+        "independent parent/child SET sorting, BER reversal, optional absence",
+        "malformed EOCs/wrappers, duplicate and unknown leaves, bounded child values",
+        "prefixes, truncations, mutations, limits, and pinned shared work"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "NamedSet*.asn1; named_set_child_conformance.rs; c_named_set_child.c"
+    },
+    {
+      "asn1_type": "two same-module named SEQUENCE/SET children",
+      "feature": "one or two direct named records in a flat parent, six parent fields, twelve aggregate schema fields",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "required and OPTIONAL children, including empty SEQUENCE and nonempty SET",
+        "same target with distinct context IMPLICIT or EXPLICIT tags",
+        "independent parent and child SET sorting, scalar DEFAULT siblings",
+        "shared work, scratch, depth, callback failure and retry accounting",
+        "malformed second children, truncations, suffixes, and deterministic mutations",
+        "schema cap boundaries, unsupported mixtures, and no output publication"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "NamedRecordPair*.asn1; named_record_pair_conformance.rs; c_named_record_pair.c; runtime ber.rs"
+    },
+    {
+      "asn1_type": "direct imported bounded INTEGER field",
+      "feature": "one explicitly imported direct finite contiguous i64 INTEGER in an untagged flat record",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "required and OPTIONAL fields under SEQUENCE and SET",
+        "natural, context IMPLICIT, and one EXPLICIT member tag; scalar DEFAULT siblings",
+        "qualified module paths, same-spelled source types, source file order, and export forms",
+        "shared parent limits, malformed wrappers, bounds, suffixes, truncations, and mutations",
+        "unused import validation and rejection of undeclared whole-module lookup fallback",
+        "unsupported target/import metadata and no output publication"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "ImportedInteger*.asn1; imported_*integer*.rs; c_imported_bounded_integer.c"
+    },
+    {
+      "asn1_type": "direct imported named SEQUENCE/SET children",
+      "feature": "one or two local/imported direct untagged nonrecursive records in a flat parent",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "natural, context IMPLICIT, and one EXPLICIT tag; required and OPTIONAL presence",
+        "local/imported pairs and repeated imported targets with distinct effective tags",
+        "empty SEQUENCE, nonempty SET, owned OCTET/BIT leaves, and scalar DEFAULT siblings",
+        "independent parent/child SET ordering and strict CER canonical comparison",
+        "qualified paths, source orders, same-spelled targets, and unused SET callback reachability",
+        "local/imported exact budget equivalence, malformed second children, truncations, and mutations",
+        "full unused-target validation and no-publication rejection",
+        "exact twelve-field local/imported aggregate acceptance and parse-valid thirteen-field rejection"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "ImportedRecord*.asn1; imported_record*.rs; imported_record*.c; imported_record_work12_conformance.rs; ImportedRecordWork12*.asn1; ImportedRecordNegativeWork13.asn1"
+    },
+    {
+      "asn1_type": "OBJECT IDENTIFIER, RELATIVE-OID",
+      "feature": "direct untagged unconstrained root values with canonical base-128 content",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "combined first OBJECT IDENTIFIER subidentifier and relative arcs",
+        "subidentifiers wider than u64",
+        "127/128/1001 content-octet length forms",
+        "BER normalization of redundant base-128 and identifier aliases",
+        "malformed, truncated, mutated, prefix, and resource-limit inputs"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "OidValues.asn1; oid_conformance.rs; c_oid.c"
+    },
+    {
+      "asn1_type": "OBJECT IDENTIFIER, RELATIVE-OID record members",
+      "feature": "up to one direct natural field of each kind in flat SEQUENCE or SET",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "required and OPTIONAL fields beside supported scalar siblings in SEQUENCE and SET",
+        "large base-128 arcs and 127/128/1001 content lengths",
+        "aggregate scratch selected when OPTIONAL OID fields are absent",
+        "all OPTIONAL SET states including canonical omission and BER order reversal",
+        "SET effective-tag order, unordered BER, and strict CER re-encoding",
+        "empty, dangling, redundant group, malformed, truncated, mutated, and limited content"
+      ],
+      "directions": [
+        "DER encode",
+        "BER prefix decode",
+        "CER encode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "OidRecord.asn1; oid_record_conformance.rs; c_oid_record.c"
+    },
+    {
+      "asn1_type": "IA5String",
+      "feature": "direct untagged unconstrained root with raw-byte storage",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "empty, 127/128, and 999/1000/1001/2001 content sizes",
+        "BER/DER preserve arbitrary octets; CER validates bytes at most 7f",
+        "constructed BER OCTET STRING fragments, aliases, and prefix consumption",
+        "malformed, truncated, mutated, and resource-limited input"
+      ],
+      "directions": [
+        "DER encode",
+        "BER prefix decode",
+        "CER encode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "Ia5Values.asn1; ia5_conformance.rs; c_ia5.c"
+    },
+    {
+      "asn1_type": "IA5String record member",
+      "feature": "one direct natural unconstrained field in flat SEQUENCE or SET",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "required and OPTIONAL members with scalar siblings",
+        "empty, 127/128, 999/1000/1001, and multi-fragment contents",
+        "aggregate scratch context selected even when OPTIONAL member is absent",
+        "constructed BER fragments, unordered SET BER, and strict CER canonicality",
+        "raw high-byte BER/DER preservation, malformed/truncated and limited inputs"
+      ],
+      "directions": [
+        "DER encode",
+        "BER prefix decode",
+        "CER encode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "Ia5Record.asn1; ia5_record_conformance.rs; c_ia5_record.c"
+    },
+    {
+      "asn1_type": "Restricted character strings (tags 7, 12, 18-22, 25-28, 30)",
+      "feature": "direct untagged unconstrained roots with fixed per-wrapper runtime kinds",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "intrinsic tags 7, 12, 18-22, 25-28, and 30 including both distinct AST aliases",
+        "empty and 127/128/999/1000/1001-byte boundaries; aligned BMP and UniversalString sizes",
+        "CER descriptor validation for Numeric, Printable, Visible/ISO646, UTF8, BMP, and UniversalString",
+        "C-compatible minimal one- through six-byte UTF8, surrogate and above-U+10FFFF cases",
+        "constructed BER, OCTET STRING fragment tags, prefix consumption, malformed and limited input"
+      ],
+      "directions": [
+        "DER encode",
+        "BER prefix decode",
+        "CER encode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "RestrictedStrings.asn1; restricted_strings_conformance.rs; c_restricted_strings.c"
+    },
+    {
+      "asn1_type": "Restricted character-string flat-record members",
+      "feature": "one natural direct non-IA5 field in an untagged SEQUENCE or SET",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "all supported kinds with distinct Teletex/T61 and Visible/ISO646 identities",
+        "required and OPTIONAL fields plus bounded explicit OCTET/implicit BIT siblings",
+        "aggregate scratch remains selected when an OPTIONAL string is absent",
+        "per-kind CER validation, 999/1000/1001 and multi-fragment boundaries",
+        "aligned BMP and UniversalString lengths; UTF8 sequence across a fragment",
+        "constructed BER, malformed fragments, prefix, and input/output limits",
+        "aliases, tags, constraints, DEFAULT, extensions, imports, and codec negatives"
+      ],
+      "directions": [
+        "DER encode",
+        "BER prefix decode",
+        "CER encode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "RestrictedStringRecord.asn1; restricted_string_record_conformance.rs; c_restricted_string_record.c"
+    },
+    {
+      "asn1_type": "UTCTime",
+      "feature": "direct untagged unconstrained root; raw BER/DER and canonical UTC CER",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "all four allowed source lengths, omitted seconds, year pivot, leap years, and numeric zones",
+        "checked Gregorian conversion accepts the 1969-12-31 23:59:59 time_t sentinel instant",
+        "constructed BER fragments; wire identifier aliases rejected by strict CER",
+        "raw malformed bytes retained by BER/DER; CER invalid syntax, bounds, and resource limits"
+      ],
+      "directions": [
+        "DER encode",
+        "BER prefix decode",
+        "CER normalize and encode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "UtcTimeValues.asn1; utc_time_conformance.rs; c_utc_time.c"
+    },
+    {
+      "asn1_type": "GeneralizedTime",
+      "feature": "direct untagged unconstrained root; BER raw bytes and zoned DER/CER normalization",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "hour/minute/second precision, zone signs and widths, leap dates, and four-digit years",
+        "period/comma fractions, nine-digit precision, zero trimming, and UTC normalization",
+        "constructed BER fragments and valid-content root/fragment aliases rejected by strict CER",
+        "local-zone, invalid-date, excess-fraction, and epoch C adapter divergences isolated from parity"
+      ],
+      "directions": [
+        "canonical DER encode",
+        "BER raw prefix decode",
+        "canonical CER encode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "GeneralizedTimeValues.asn1; generalized_time_conformance.rs; c_generalized_time.c"
+    },
+    {
+      "asn1_type": "SEQUENCE OF, SET OF",
+      "feature": "direct untagged unconstrained roots with one BOOLEAN, NULL, or bounded i64 INTEGER element",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "empty, singleton, multiple, duplicate, and repeated NULL elements",
+        "SEQUENCE OF preserves order; SET OF sorts complete canonical child TLVs",
+        "definite and indefinite BER, scalar aliases, root aliases, and strict CER rejection",
+        "bounded INTEGER range checks, malformed children/EOCs, prefixes, and resource limits",
+        "BER accepts zero/multi-octet BOOLEAN content; DER normalizes it and strict CER rejects it"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "OfCollections.asn1; of_collections_conformance.rs; c_of_collections.c"
+    },
+    {
+      "asn1_type": "CHOICE",
+      "feature": "direct untagged root with one unique BOOLEAN, NULL, or bounded i64 INTEGER arm",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "typed enum alternatives with no outer wrapper TLV",
+        "exact C DER/CER output and BER/CER decode for each arm",
+        "high-tag, long-length, empty/multi-octet BOOLEAN, and redundant INTEGER BER aliases",
+        "strict CER alias rejection, prefix consumption, malformed tags, bounds, and limits",
+        "BOOLEAN-only, NULL-only, INTEGER-only, and BOOLEAN/NULL pair schemas under codec-only selection"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "PrimitiveChoice.asn1; choice_conformance.rs; c_primitive_choice.c"
+    },
+    {
+      "asn1_type": "inline CHOICE in SEQUENCE or SET",
+      "feature": "required or OPTIONAL natural/EXPLICIT CHOICE with unique BOOLEAN, NULL, or bounded INTEGER arms",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "natural CHOICE uses one logical presence slot in SEQUENCE or top-level SET",
+        "one-tag EXPLICIT CHOICE in SEQUENCE or SET; IMPLICIT CHOICE is rejected",
+        "DER SET order uses the selected arm tag; CER SET order uses the minimum declared arm tag",
+        "exact C DER/CER parity for each arm and optional presence state",
+        "C-compatible empty/multi-octet BOOLEAN BER and high-tag alias normalize under DER; strict CER rejects",
+        "required-choice absence, duplicate natural alternatives, malformed wrapper children, suffixes, and limits",
+        "single- and two-arm inline enums pass strict Clippy in combined and codec-only output",
+        "unsupported codecs, aliases/imports, extensions/nesting, collisions, and invalid forms fail before publication"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "InlineChoiceChildren.asn1; inline_choice_conformance.rs; c_inline_choice.c"
+    },
+    {
+      "asn1_type": "natural primitive CHOICE in top-level SET",
+      "feature": "one optional natural CHOICE with unique BOOLEAN, NULL, or bounded i64 INTEGER arms",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "one logical presence slot; every arm tag is checked against all siblings",
+        "DER ordering uses the selected arm tag and CER ordering uses the minimum arm tag",
+        "exact C DER/CER parity for all alternatives and optional absence",
+        "unordered BER members and a high-tag alias decode; strict CER rejects each",
+        "canonical CER suffix prefix consumption and decoded values",
+        "sibling collisions, malformed input, bounds, and limits are rejected"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "NaturalChoiceSet.asn1; natural_choice_set_conformance.rs; c_natural_choice_set.c"
+    },
+    {
+      "asn1_type": "BIT STRING, OCTET STRING",
+      "feature": "direct untagged unconstrained root values",
+      "codec": "BER/DER and CER only",
+      "variants": [
+        "empty values and 999/1000/1001 content boundaries",
+        "multi-fragment values including 2001 data octets",
+        "non-byte-aligned BIT STRING with validated zero padding",
+        "nested constructed BER, prefix consumption, aliases, malformed input",
+        "resource limits and input mutation/truncation checks"
+      ],
+      "directions": [
+        "DER and CER encode",
+        "BER prefix decode",
+        "strict CER prefix decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "UnconstrainedStrings.asn1; unconstrained_strings_conformance.rs; c_unconstrained_strings.c; UnconstrainedStringsImport.asn1"
     },
     {
       "asn1_type": "BOOLEAN",
       "feature": "primitive, nonextensible",
       "codec": "CER",
-      "variants": ["canonical FALSE 00", "canonical TRUE FF"],
-      "directions": ["encode", "strict decode"],
+      "variants": [
+        "canonical FALSE 00",
+        "canonical TRUE FF"
+      ],
+      "directions": [
+        "encode",
+        "strict decode"
+      ],
       "status": "tested_with_live_C_comparison",
       "evidence": "conformance.rs; c_reference.c; asn1c-runtime unit tests"
     },
@@ -60,8 +525,13 @@
       "asn1_type": "NULL",
       "feature": "primitive, nonextensible",
       "codec": "CER",
-      "variants": ["empty primitive content"],
-      "directions": ["encode", "strict decode"],
+      "variants": [
+        "empty primitive content"
+      ],
+      "directions": [
+        "encode",
+        "strict decode"
+      ],
       "status": "tested_with_live_C_comparison",
       "evidence": "conformance.rs; c_reference.c; asn1c-runtime unit tests"
     },
@@ -69,8 +539,18 @@
       "asn1_type": "INTEGER",
       "feature": "finite signed i64, minimal two's-complement content",
       "codec": "CER",
-      "variants": ["127", "128", "-128", "-129", "i64::MIN", "i64::MAX"],
-      "directions": ["encode", "strict decode"],
+      "variants": [
+        "127",
+        "128",
+        "-128",
+        "-129",
+        "i64::MIN",
+        "i64::MAX"
+      ],
+      "directions": [
+        "encode",
+        "strict decode"
+      ],
       "status": "tested_with_live_C_comparison",
       "evidence": "conformance.rs; c_reference.c; asn1c-runtime unit tests"
     },
@@ -82,38 +562,508 @@
         "definite lengths",
         "canonical DER output",
         "BER prefix consumption",
-        "BOOLEAN content is exactly one octet"
+        "BER accepts empty/multi-octet content; DER emits one octet and strict CER requires canonical content"
       ],
-      "directions": ["BER decode", "DER encode"],
+      "directions": [
+        "BER decode",
+        "DER encode"
+      ],
       "status": "tested_primitive_subset",
       "evidence": "conformance.rs; asn1c-runtime unit tests"
+    },
+    {
+      "asn1_type": "ENUMERATED, OCTET STRING, BIT STRING",
+      "feature": "direct nonextensible enum values and fixed/bounded finite SIZE constraints",
+      "codec": "BER decode / DER encode / CER decode and encode",
+      "variants": [
+        "negative and positive enum roots including i64::MIN and i64::MAX",
+        "unknown enum root values rejected",
+        "fixed and bounded octet strings validate decoded SIZE",
+        "fixed and bounded bit strings validate exact logical SIZE",
+        "BER prefix consumption and C encoder vectors"
+      ],
+      "directions": [
+        "BER decode",
+        "DER encode",
+        "CER decode",
+        "CER encode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "ber_cer_conformance.rs; c_ber_cer.c; asn1c-runtime/src/ber.rs tests"
+    },
+    {
+      "asn1_type": "BOOLEAN, NULL, INTEGER",
+      "feature": "direct primitive; INTEGER finite nonextensible signed i64 bounds",
+      "codec": "APER",
+      "variants": [
+        "BOOLEAN one bit",
+        "NULL zero-width complete value",
+        "bounded INTEGER aligned range thresholds"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
+      "status": "tested_primitive_subset",
+      "evidence": "additional_codecs.rs; asn1c-runtime/src/aper.rs tests; c_additional.c"
+    },
+    {
+      "asn1_type": "BOOLEAN, NULL, INTEGER",
+      "feature": "direct primitive; INTEGER finite nonextensible signed i64 bounds",
+      "codec": "OER",
+      "variants": [
+        "canonical BOOLEAN output and basic truth decoding",
+        "empty NULL",
+        "fixed-width bounded INTEGER"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
+      "status": "tested_primitive_subset",
+      "evidence": "additional_codecs.rs; asn1c-runtime/src/oer.rs tests; c_additional.c"
+    },
+    {
+      "asn1_type": "SEQUENCE",
+      "feature": "required or OPTIONAL direct and inline nested fields plus literal BOOLEAN and bounded INTEGER DEFAULT; UPER-only selection",
+      "codec": "UPER",
+      "variants": [
+        "cross-byte field packing",
+        "declaration-order OPTIONAL presence bitmap and absent fields",
+        "declaration-order DEFAULT presence bits interleaved with OPTIONAL fields",
+        "AUTOMATIC TAGS on direct SEQUENCE components ignored by UPER",
+        "DEFAULT payload omission and literal substitution",
+        "present values equal to DEFAULT accepted by the decoder",
+        "literal DEFAULT range/type rejection before publication",
+        "nine-bit presence bitmap crossing an octet boundary",
+        "zero-width member and complete-value filler",
+        "full signed i64 INTEGER range",
+        "cumulative work and whole-input/output ceilings",
+        "required and OPTIONAL nested records with local presence maps",
+        "required and OPTIONAL inline nonextensible ENUMERATED fields",
+        "nested primitive DEFAULT omission and substitution",
+        "nested truncation, filler, and cumulative limit rejection"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "sequence_conformance.rs; nested_conformance.rs; sequence_enum_conformance.rs; c_sequence.c; c_sequence_enum.c; C UPER encode/decode vectors"
+    },
+    {
+      "asn1_type": "SEQUENCE",
+      "feature": "empty or flat untagged direct fields with unique universal tags: BOOLEAN, NULL, bounded INTEGER, inline ENUMERATED, fixed/bounded OCTET STRING and BIT STRING; required or OPTIONAL, with literal BOOLEAN/INTEGER DEFAULT only",
+      "codec": "UPER + BER decode / DER encode + CER decode and encode",
+      "variants": [
+        "DER definite-length and CER indefinite-length framing",
+        "required fields and absent/present OPTIONAL values",
+        "DEFAULT omission and BER substitution for literal BOOLEAN and INTEGER",
+        "CER rejection of explicit DEFAULT values",
+        "empty record encoding and decoding",
+        "declared ENUMERATED numeric values and rejection of unknown values",
+        "required and OPTIONAL fixed/bounded OCTET STRING and BIT STRING members",
+        "DER OCTET STRING child and outer length edges at 125/126 and 127/128",
+        "CER OCTET STRING fragmentation at 1000/1001 and BIT STRING at 999/1000 payload octets",
+        "BER constructed OCTET/BIT STRING fields and strict CER noncanonical-fragment rejection",
+        "unknown, duplicate, reordered, missing, truncated, and out-of-range fields",
+        "prefix consumption and cumulative input, retained-string output, and work limits",
+        "unsupported tags, aliases, repeated universal tags, nesting, defaults, and size ranges rejected"
+      ],
+      "directions": [
+        "BER decode",
+        "DER encode",
+        "CER decode",
+        "CER encode",
+        "UPER encode/decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "SequenceBerCer.asn1; sequence_ber_cer_conformance.rs; c_sequence_ber_cer.c; check-rust-backend.sh"
+    },
+    {
+      "asn1_type": "SEQUENCE",
+      "feature": "one context-specific IMPLICIT root tag on a flat top-level SEQUENCE of direct fields",
+      "codec": "BER decode / DER encode + CER decode and encode",
+      "variants": [
+        "BER/CER-only selector gate; mixed UPER and other codec masks rejected",
+        "root tags 0, 3, 30, 31, 127, and 0x3fffffff",
+        "DER definite root and CER indefinite root vectors",
+        "empty records and required, OPTIONAL, and DEFAULT field behavior",
+        "BER definite/indefinite decoding, exact prefix consumption, and limits",
+        "BER accepts a nonminimal high-tag alias while strict CER rejects it",
+        "primitive root form, mismatched tag, truncation, malformed EOC, and suffix checks",
+        "explicit/application roots, aliases, extensions, and nested children rejected",
+        "generated C DER/CER parity at tags 3, 31, and 0x3fffffff with decode probes"
+      ],
+      "directions": [
+        "BER decode",
+        "DER encode",
+        "CER decode",
+        "CER encode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "TaggedRootSequence.asn1; TaggedRootStack.asn1; tagged_root_conformance.rs; c_tagged_root.c; check-rust-backend.sh"
+    },
+    {
+      "asn1_type": "SET",
+      "feature": "one context-specific IMPLICIT tag on a direct flat top-level SET",
+      "codec": "BER decode / DER encode + CER decode and encode",
+      "variants": [
+        "BER/CER-only selector gate; mixed UPER and other codec masks rejected",
+        "DER/CER field sorting by effective class and number with reversed declarations",
+        "unordered BER dispatch for definite and indefinite root forms",
+        "context root tags 0, 30, 31, 127, and 0x3fffffff",
+        "empty SET and required, OPTIONAL, and DEFAULT direct fields",
+        "strict CER rejects indefinite reversed fields and nonminimal root aliases independently",
+        "malformed roots, primitive form, EOC, unknown/duplicate/missing children, and limits",
+        "explicit/other-class roots, references, extensions, nested children, and tag stacks rejected",
+        "generated C DER/CER parity for context and mixed universal/context children"
+      ],
+      "directions": [
+        "BER decode",
+        "DER encode",
+        "CER decode",
+        "CER encode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "TaggedRootSet.asn1; TaggedRootSetC.asn1; tagged_root_set_conformance.rs; c_tagged_root_set.c; check-rust-backend.sh"
+    },
+    {
+      "asn1_type": "SET",
+      "feature": "empty or flat untagged direct fields with distinct universal tags: BOOLEAN, bounded INTEGER, fixed/bounded BIT and OCTET STRING, NULL, nonextensible inline ENUMERATED; required/OPTIONAL, literal BOOLEAN/INTEGER DEFAULT",
+      "codec": "BER decode / DER encode + CER decode and encode",
+      "variants": [
+        "DER definite-length and CER indefinite-length framing",
+        "DER/CER SET fields sorted by ascending universal tag independently of declaration order",
+        "all six field kinds, arbitrary BER child order, and all generated decoder tag assignments",
+        "empty, OPTIONAL, and BOOLEAN/INTEGER DEFAULT omission/substitution",
+        "CER rejection of reordered children and explicit DEFAULT values",
+        "ENUMERATED numeric mapping and unknown-value rejection",
+        "bounded OCTET STRING fragmentation at 1000/1001 content octets",
+        "bounded BIT STRING fragmentation at 999/1000 payload octets",
+        "unknown, duplicate, missing, truncated, and out-of-range fields",
+        "prefix consumption and input/output/work limits",
+        "unsupported codec masks, tags, aliases, repeated tags, nesting, defaults, and SIZE forms rejected"
+      ],
+      "directions": [
+        "BER decode",
+        "DER encode",
+        "CER decode",
+        "CER encode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "SetBerCer.asn1; SetBerCerC.asn1; set_ber_cer_conformance.rs; c_set_ber_cer.c; check-rust-backend.sh"
+    },
+    {
+      "asn1_type": "SEQUENCE",
+      "feature": "flat direct universal, resolved context-specific IMPLICIT, and one-level EXPLICIT fields across BOOLEAN, bounded INTEGER, BIT/OCTET STRING, NULL, and nonextensible inline ENUMERATED; automatic tags; at most six unique effective tags",
+      "codec": "UPER + BER decode / DER encode + CER decode and encode",
+      "variants": [
+        "manual and AUTOMATIC TAGS copied from the fixed AST",
+        "one context-specific EXPLICIT wrapper with exactly one universal child",
+        "C and Rust DER/CER vectors agree for inline explicit ENUMERATED fields",
+        "EXPLICIT and IMPLICIT module defaults, explicit overrides, and automatic tags",
+        "definite/indefinite BER wrappers and strict CER canonical re-encoding",
+        "CER-fragmented EXPLICIT OCTET/BIT STRING wrappers and constructed BER children",
+        "context tag number boundaries 30, 31, 127, 128, and 0x3fffffff",
+        "repeated primitive kinds accepted only with unique effective tags",
+        "required, OPTIONAL, literal BOOLEAN/INTEGER DEFAULT, and declaration order",
+        "DER/CER and UPER roundtrips with exact prefix consumption",
+        "BER high-tag aliases accepted while strict CER canonical re-encoding rejects them",
+        "constructed implicit BER OCTET/BIT STRING flattening and strict CER rejection",
+        "CER tagged OCTET 1001 and BIT STRING 1000-payload-octet fragmentation",
+        "unsupported classes/modes, root tags, references/chains, range/collisions, ANY, and nested-shape rejection",
+        "input, output, and work limits"
+      ],
+      "directions": [
+        "BER decode",
+        "DER encode",
+        "CER decode",
+        "CER encode",
+        "UPER encode/decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "TaggedSequence.asn1; ExplicitRecords.asn1; tagged_sequence_conformance.rs; explicit_sequence_conformance.rs; c_tagged_sequence.c; c_explicit_record.c; check-rust-backend.sh"
+    },
+    {
+      "asn1_type": "SET",
+      "feature": "flat direct universal, resolved context-specific IMPLICIT, and one-level EXPLICIT fields in the six supported primitive kinds; automatic tags; unique effective class/number pairs; required/OPTIONAL and supported BOOLEAN/INTEGER DEFAULT",
+      "codec": "BER decode / DER encode + CER decode and encode",
+      "variants": [
+        "DER/CER SET sorting by effective class and number",
+        "EXPLICIT wrappers sort by their outer effective tag and contain one child",
+        "C and Rust SET vectors agree for explicit ENUMERATED tag 127",
+        "arbitrary BER order and strict CER rejection of reordered fields",
+        "manual and AUTOMATIC TAGS with context tag 31, 128, and maximum range coverage",
+        "universal/context-specific tag mixtures and repeated primitive kinds",
+        "empty SET, OPTIONAL values, and DEFAULT omission/substitution",
+        "unknown, duplicate, missing, truncated, out-of-range, and wrong-kind children",
+        "unsupported explicit chains/classes, excessive or colliding tags, and unsupported shapes rejected",
+        "BER-only and CER-only selectors with strict Clippy"
+      ],
+      "directions": [
+        "BER decode",
+        "DER encode",
+        "CER decode",
+        "CER encode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "TaggedSet.asn1; TaggedSetC.asn1; ExplicitSet.asn1; tagged_set_conformance.rs; explicit_set_conformance.rs; c_tagged_sequence.c; c_explicit_record.c; check-rust-backend.sh"
+    },
+    {
+      "asn1_type": "SEQUENCE",
+      "feature": "one inline child with supported primitive leaves, unique tags, and empty child records",
+      "codec": "UPER + BER/CER for nonempty children; BER/CER-only for empty children",
+      "variants": [
+        "natural, IMPLICIT, and EXPLICIT child SEQUENCE tags",
+        "required empty inline child SEQUENCE DER/CER framing",
+        "empty-child mixed UPER/BER/CER selection rejected before publication",
+        "required and OPTIONAL top-level child presence",
+        "required and OPTIONAL child primitive leaves with IMPLICIT and EXPLICIT tags",
+        "nested bounded OCTET STRING CER fragmentation at 1001 octets",
+        "BER mixed definite/indefinite EXPLICIT layers and strict CER rejection",
+        "malformed lengths, EOC placement, child boundaries, and prefix consumption",
+        "shared operation resource limits and preserved UPER methods",
+        "C and Rust DER/CER vectors for nested records and string fragments"
+      ],
+      "directions": [
+        "BER decode",
+        "DER encode",
+        "CER decode",
+        "CER encode",
+        "UPER encode/decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "NestedBerCer.asn1; NestedEmptyBerCer.asn1; nested tests; c_nested_ber_cer.c; check-rust-backend.sh"
+    },
+    {
+      "asn1_type": "SET",
+      "feature": "one inline child with required primitive leaves and unique tags",
+      "codec": "BER decode / DER encode + CER decode and encode",
+      "variants": [
+        "EXPLICIT child wrapper sorted by its outer effective tag",
+        "DER/CER SET ordering with universal and context-specific neighbors",
+        "nested child boundary, canonicality, and resource checks",
+        "C and Rust DER/CER vector comparison"
+      ],
+      "directions": [
+        "BER decode",
+        "DER encode",
+        "CER decode",
+        "CER encode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "NestedSetBerCer.asn1; nested_set_ber_cer_conformance.rs; c_nested_ber_cer.c; check-rust-backend.sh"
+    },
+    {
+      "asn1_type": "SEQUENCE, SET",
+      "feature": "one nonempty SET child with six direct leaves and unique natural, IMPLICIT, or EXPLICIT tags",
+      "codec": "BER decode / DER encode + CER decode and encode; BER/CER-only selection",
+      "variants": [
+        "natural, context-specific IMPLICIT, and one EXPLICIT child tags",
+        "effective-tag sorting within child SET independent of parent SET order",
+        "unordered BER child/parent dispatch and strict CER reorder rejection",
+        "six-leaf mix, optional child absence, mixed explicit length wrappers",
+        "prefix consumption, malformed boundaries, shared limits, and C differential vectors",
+        "empty/nested/multiple child, DEFAULT, extension, alias/import, and tagged-root rejection"
+      ],
+      "directions": [
+        "BER decode",
+        "DER encode",
+        "CER decode",
+        "CER encode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "NestedSetChildren.asn1; Rust/C conformance fixtures; check-rust-backend.sh"
+    },
+    {
+      "asn1_type": "OCTET STRING, BIT STRING",
+      "feature": "direct fixed SIZE(N), bounded OCTET SIZE(l..u), and bounded BIT SIZE(l..u), all below 65536; standalone and required or OPTIONAL SEQUENCE field",
+      "codec": "UPER",
+      "variants": [
+        "zero-size complete filler",
+        "continuous cross-byte packing",
+        "BIT STRING unused-bit validation",
+        "whole-value resource budgets",
+        "SIZE(65535) accepted; SIZE(65536) rejected",
+        "bounded OCTET STRING SIZE(1..3), standalone and required or OPTIONAL SEQUENCE field",
+        "bounded BIT STRING SIZE(1..3), exact non-octet bit lengths and required or OPTIONAL SEQUENCE field",
+        "bounded BIT STRING SIZE(2..4), non-octet payload after OPTIONAL presence bits",
+        "spare constrained-length codes, truncation, padding, input/work/output limits",
+        "deterministic mutation of every meaningful bit in bounded BIT STRING golden vectors"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "string_conformance.rs; c_string.c; asn1c-runtime/src/uper_cursor.rs tests; boundary_conformance.rs; variable_string_conformance.rs; c_variable_string.c; variable_bit_string_conformance.rs; c_variable_bit_string.c"
+    },
+    {
+      "asn1_type": "OCTET STRING",
+      "feature": "direct fixed nonextensible SIZE(N), N < 65536; JER alone or combined with UPER",
+      "codec": "JER",
+      "variants": [
+        "empty quoted hexadecimal token",
+        "mixed bytes with uppercase C-compatible encoding",
+        "lowercase hexadecimal decoding and surrounding JSON whitespace",
+        "malformed tokens, incorrect fixed size, and trailing input rejection",
+        "input, output, and cumulative work limit enforcement"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "octet_jer_conformance.rs; c_jer.c; OctetJER.asn1; asn1c-runtime/src/jer.rs tests"
+    },
+    {
+      "asn1_type": "OCTET STRING",
+      "feature": "direct bounded nonextensible SIZE(l..u), 0 <= l < u < 65536; JER alone or with UPER",
+      "codec": "JER",
+      "variants": [
+        "C-compatible quoted uppercase hexadecimal output",
+        "case-insensitive decoding with surrounding JSON whitespace",
+        "inclusive range, malformed hex, and complete-input validation",
+        "input, output, and work limit enforcement",
+        "generated C encode/decode interoperability"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "octet_jer_conformance.rs; c_jer.c; OctetJER.asn1; asn1c-runtime/src/jer.rs tests"
+    },
+    {
+      "asn1_type": "BIT STRING",
+      "feature": "direct fixed nonextensible SIZE(N); JER alone or with UPER",
+      "codec": "JER",
+      "variants": [
+        "C-compatible packed uppercase hexadecimal string",
+        "case-insensitive decoding with surrounding JSON whitespace",
+        "exact storage length, zero-padding, and complete-input validation",
+        "generated C encode/decode interoperability"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "bit_jer_conformance.rs; c_jer.c; OctetJER.asn1; asn1c-runtime/src/jer.rs tests"
+    },
+    {
+      "asn1_type": "BIT STRING",
+      "feature": "direct bounded nonextensible SIZE(l..u), 0 <= l < u < 65536; JER alone or with UPER",
+      "codec": "JER",
+      "variants": [
+        "C-compatible minified object with value before length",
+        "exact logical bit length and packed hexadecimal payload",
+        "range, hexadecimal, zero-padding, and complete-input validation",
+        "generated C encode/decode interoperability"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "bit_jer_conformance.rs; c_jer.c; OctetJER.asn1; asn1c-runtime/src/jer.rs tests"
+    },
+    {
+      "asn1_type": "BOOLEAN, NULL, INTEGER",
+      "feature": "top-level direct primitive; INTEGER finite nonextensible signed i64 bounds",
+      "codec": "JER",
+      "variants": [
+        "compact JSON primitive tokens",
+        "complete-input decoding with JSON whitespace",
+        "checked integer syntax, bounds, and resource limits"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "jer_conformance.rs; c_jer.c; asn1c-runtime/src/jer.rs tests"
+    },
+    {
+      "asn1_type": "ENUMERATED",
+      "feature": "direct nonextensible root values fitting i64, at most 64 members; numeric-order UPER indexes",
+      "codec": "UPER",
+      "variants": [
+        "out-of-order numeric declaration",
+        "singleton complete filler",
+        "spare root index",
+        "work budget",
+        "mixed-case keyword normalization"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "enum_conformance.rs; c_enum.c; EnumSlice.asn1"
+    },
+    {
+      "asn1_type": "ENUMERATED",
+      "feature": "direct nonextensible root values, at most 64 members; JER uses the declared ASN.1 identifier",
+      "codec": "JER",
+      "variants": [
+        "compact quoted-name tokens matching the C mapping",
+        "complete-input decode with JSON whitespace",
+        "unknown-name, escape, trailing-data, and resource-limit rejection"
+      ],
+      "directions": [
+        "encode",
+        "decode"
+      ],
+      "status": "tested",
+      "evidence": "enum_jer_conformance.rs; asn1c-runtime/src/jer.rs tests; EnumSlice.asn1"
+    },
+    {
+      "asn1_type": "SEQUENCE/SET BOOLEAN fields",
+      "feature": "Private bitset above three scalar BOOLEANs; typed construction and accessors",
+      "codec": "BER/DER/CER, UPER, CBOR, XER encoder",
+      "variants": [
+        "required/optional/default",
+        "six-field SET",
+        "inline/local/imported child",
+        "64-field UPER",
+        "owned buffers",
+        "maximum field identifier",
+        "all sixteen DEFAULT presence/payload vectors",
+        "64-field mixed required/OPTIONAL/DEFAULT UPER oracle",
+        "60 OPTIONAL fields with external transparent constructor tuple",
+        "XER transparent constructor tuple and OPTIONAL presence",
+        "XER mixed twelve-OPTIONAL String constructor, owned moves and invalid controls"
+      ],
+      "directions": [
+        "encode",
+        "decode where supported"
+      ],
+      "status": "tested_with_live_C_comparison",
+      "evidence": "check-rust-bitsets.sh; bool_*_conformance.rs; c_boolean_storage.c"
     }
   ],
   "not_yet_implemented_by_this_Rust_slice": [
     {
-      "family": "BER/DER outside the primitive slice",
+      "family": "BER/DER shapes outside the qualified direct CHOICE and tagged record slices",
       "status": "not_implemented",
-      "note": "Constructed, tagged, and other primitive types are not qualified."
+      "note": "Deeper nesting, extensions, aliases outside the qualified transparent bounded INTEGER slice, unsupported tags, and other primitives remain unqualified."
     },
     {
-      "family": "APER",
+      "family": "APER/OER outside the primitive slice",
       "status": "not_implemented",
-      "note": "No generated Rust encoder or decoder is qualified."
+      "note": "Constructed, tagged, extensible, unconstrained, and other primitive types are not qualified for APER/OER."
     },
     {
-      "family": "OER",
+      "family": "XER and JER outside supported slices",
       "status": "not_implemented",
-      "note": "Basic and canonical OER are not qualified."
+      "note": "XER supports only basic encoding of flat SET and SEQUENCE records with untagged or automatic-tagged direct BOOLEAN, bounded INTEGER, and unconstrained IA5String, and REAL DEFAULT 0.5 fields with finite limited values; decoding and mixed codec selection are unsupported. JER is qualified for listed primitives and strings."
     },
     {
-      "family": "XER/JER/CBOR",
-      "status": "not_implemented",
-      "note": "No generated Rust encoder or decoder is qualified."
-    },
-    {
-      "family": "constructed, string, CHOICE, ENUMERATED, REAL, open types",
+      "family": "constructed outside nested UPER SEQUENCE, extensible, fragmented or disjoint strings, named-bit strings, extensible ENUMERATED, REAL, open types",
       "status": "outside_first_slice",
-      "note": "No Rust correctness or interoperability claim is made for these types."
+      "note": "No Rust correctness or interoperability claim is made beyond the listed primitive, CHOICE, collection, and record subsets."
     },
     {
       "family": "extensible constraints and cross-codec conversion",
@@ -129,17 +1079,43 @@
   "comparison_policy": {
     "C_role": "Current C implementation is a comparison implementation, not a protocol oracle.",
     "independent_checks": "Rust fixed vectors, malformed-input checks, budgets, and round trips",
-    "canonicality": "CER claims are limited to listed primitive encoder vectors and full-TLV bit counts."
+    "canonicality": "CER claims cover listed vectors only. Bit counts cover full TLVs. IA5 BER preserves bytes; CER enforces its 7-bit alphabet. Collection SET OF order compares complete child encodings.",
+    "test_function_count": "Unique #[test] functions in the standalone .rs fixtures referenced by the compiler test drivers; codec/source-order reruns and alias test reuse do not add unique functions."
   },
   "compiler_boundary_checks": {
     "rejected_before_output": [
-      "aliases and imports",
-      "explicit tags and encoding controls",
-      "unconstrained, extensible, union, and named-number INTEGER",
-      "unsupported constructed types and module-name sanitization collisions",
-      "unsupported codec and C-layout selectors",
+      "aliases and imports outside the qualified direct INTEGER/named-record slices",
+      "top-level explicit tags and encoding controls",
+      "unconstrained INTEGER with non-BER/CER-only selection, explicit MIN..MAX/open/extended constraints, and tags",
+      "unconstrained INTEGER record aliases/imports, constraints, DEFAULT, nesting, and multiplicity",
+      "unconstrained INTEGER record IA5/OID coexistence and mixed codecs",
+      "named INTEGER record alias graphs outside the one-hop transparent local slice, unsupported imports, unbounded/union/extended or out-of-i64 targets, extra constraints, tagged targets/roots, DEFAULT, nesting, multiplicity, collisions, and mixed codecs",
+      "unsupported DEFAULT forms, constructed DEFAULT, nested extensions, excessive nesting or aggregate field-work, generated nested-name collisions, extensible and otherwise unsupported constructed types",
       "duplicate --rust selectors and disabling all Rust codecs",
-      "an incomplete runtime asset set beside explicit skeletons"
+      "an incomplete runtime asset set beside explicit skeletons",
+      "unsupported XER shapes and mixed codecs, unsupported JER type combinations, and C-layout selectors",
+      "extensible ENUMERATED root values",
+      "fixed string SIZE(65536) at the fragmentation boundary",
+      "extensible-size, size unions, and named-bit OCTET/BIT STRING forms",
+      "bounded BIT STRING upper bound 65536",
+      "bounded BIT STRING with codecs outside UPER, JER, BER, or CER",
+      "bounded OCTET STRING with extensible, disjoint, oversized, or unsupported codec constraints",
+      "named BIT STRING forms with BER or CER selection",
+      "direct unbounded BIT/OCTET STRING with named bits, CONTAINING, explicit SIZE, tags, aliases, fields, imports, or non-BER/CER-only codec selection",
+      "direct unbounded OBJECT IDENTIFIER and RELATIVE-OID with tags, constraints, aliases, fields, imports, or non-BER/CER-only codec selection",
+      "OID records with unsupported tags, constraints, imports, defaults, nesting, duplicates, IA5, or codec masks",
+      "direct unconstrained IA5String with tags, constraints, aliases, fields, imports, or non-BER/CER-only codec selection",
+      "IA5String record fields with tags, constraints, aliases, or imports",
+      "IA5String record fields with DEFAULT, nesting, multiplicity, or non-BER/CER codecs",
+      "direct restricted character strings with tags, constraints, aliases, fields, imports, CHARACTER STRING, or non-BER/CER-only codec selection",
+      "direct UTCTime with tags, constraints, aliases, fields, imports, or non-BER/CER-only codec selection",
+      "direct GeneralizedTime with tags, constraints, aliases, fields, imports, or non-BER/CER-only codec selection",
+      "direct collections with unsupported SIZE/tags/references/imports/nesting/elements/constraints/codecs",
+      "inline CHOICE with unsupported tagging/arms, collisions, or codecs",
+      "natural top-level SET CHOICE with any sibling tag colliding with one of its arms",
+      "imported INTEGER aliases/reexports, unsupported or unused imports, exports, undeclared lookup fallback, module identities/options, parameters, constraints, and mixed codecs",
+      "imported record aliases/reexports, invalid target leaves even when unused, export/ownership metadata, extra depth/fields/work, effective-tag collisions, and mixed codecs",
+      "transparent INTEGER alias chains/cycles, declared constraints, tags, parameters, foreign targets, unsupported base types, normalized collisions, and unsupported codecs even when unused"
     ],
     "output_safety": [
       "unowned destination preservation",
@@ -149,15 +1125,141 @@
     ],
     "identifier_handling": [
       "generated names Limits, Error, Decoded, Result, and Ok compile and run",
-      "LIB, Core, and Asn1cRuntime map to safe filenames and pass offline cargo check"
+      "LIB, Core, and Asn1cRuntime map to safe filenames and pass offline cargo check",
+      "CamelCase type names for dashed identifiers and reserved Self; qualified imported/local name coexistence; unchanged module/field/ENUMERATED naming; normalized collisions reject prepublication"
     ]
   },
   "observed_counts": {
-    "generated_rust_test_functions": 12,
+    "generated_rust_test_functions": 299,
+    "generated_choice_test_functions": 4,
+    "live_C_choice_canonical_vectors_each_direction": 5,
+    "live_C_choice_BER_alias_vectors": 9,
     "live_c_rust_vectors_each_direction": 8,
-    "unsupported_target_or_schema_cases": 23,
-    "single_octet_mutation_inputs": 768,
+    "single_octet_mutation_inputs": 796,
+    "JER_single_octet_mutation_inputs": 256,
     "wide_prefix_inputs_including_complete_value": 9,
-    "truncated_wide_prefix_inputs": 8
+    "truncated_wide_prefix_inputs": 8,
+    "live_C_fixed_string_encode_vectors": 5,
+    "live_C_enum_encode_vectors": 4,
+    "live_C_JER_primitive_vectors_each_direction": 8,
+    "live_C_bounded_octet_JER_encode_vectors": 1,
+    "live_C_bounded_string_encode_vectors": 3,
+    "live_C_bounded_bit_string_encode_vectors": 4,
+    "live_C_ber_der_cer_encode_vectors": 34,
+    "bounded_BIT_single_bit_mutation_inputs": 8,
+    "BigInteger_test_functions": 6,
+    "live_C_wide_INTEGER_vectors_each_direction": 12,
+    "BigInteger_mutated_octet_inputs": 6,
+    "BigInteger_truncated_prefix_inputs": 6,
+    "generated_big_integer_record_test_functions": 4,
+    "live_C_wide_INTEGER_record_vectors_each_direction": 36,
+    "BigInteger_record_mutation_inputs": 15,
+    "BigInteger_record_truncated_prefix_inputs": 15,
+    "generated_named_integer_record_test_functions": 8,
+    "named_integer_record_negative_schema_fixtures": 15,
+    "live_C_named_integer_record_canonical_vectors_each_direction": 13,
+    "live_C_named_integer_record_alias_forms": 2,
+    "live_C_unbounded_string_vectors_each_direction": 11,
+    "unbounded_string_single_octet_mutation_inputs": 2023,
+    "unbounded_string_truncated_prefix_inputs": 2037,
+    "live_C_OID_vectors_each_direction": 13,
+    "OID_mutated_octet_inputs": 1005,
+    "OID_truncated_prefix_inputs": 1005,
+    "generated_oid_record_test_functions": 4,
+    "live_C_oid_record_canonical_vectors_each_direction": 16,
+    "live_C_oid_record_noncanonical_BER_content_forms": 4,
+    "oid_record_mutation_inputs": 21,
+    "live_C_IA5_vectors_each_direction": 8,
+    "IA5_mutated_octet_inputs": 1011,
+    "IA5_truncated_prefix_inputs": 1011,
+    "generated_ia5_record_test_functions": 4,
+    "live_C_ia5_record_canonical_vectors_each_direction": 10,
+    "live_C_restricted_string_vectors_each_direction": 78,
+    "live_C_restricted_string_invalid_CER_vectors": 7,
+    "restricted_string_constructed_BER_types": 13,
+    "generated_restricted_string_record_test_functions": 8,
+    "live_C_restricted_string_record_vectors_each_direction": 36,
+    "restricted_string_record_malformed_BER_rejection_vectors": 2,
+    "restricted_string_record_invalid_CER_content_kinds": 6,
+    "restricted_string_record_negative_schema_fixtures": 19,
+    "restricted_string_record_aggregate_context_sites": 72,
+    "live_C_UTCTime_vectors_each_direction": 9,
+    "live_C_UTCTime_invalid_CER_vectors": 5,
+    "live_C_GeneralizedTime_vectors_each_direction": 11,
+    "live_C_GeneralizedTime_adapter_divergence_checks": 4,
+    "generated_collection_test_functions": 7,
+    "live_C_collection_encode_vectors_each_direction": 22,
+    "live_C_collection_decode_vectors_each_direction": 18,
+    "live_C_collection_invalid_CER_vectors": 6,
+    "live_C_collection_invalid_BER_vectors": 2,
+    "collection_mutation_inputs": 30,
+    "generated_inline_choice_test_functions": 5,
+    "live_C_inline_choice_canonical_vectors_each_direction": 11,
+    "live_C_inline_choice_noncanonical_BER_forms": 3,
+    "inline_choice_compile_only_arm_counts": 2,
+    "inline_choice_negative_schema_fixtures": 10,
+    "generated_natural_choice_set_test_functions": 3,
+    "live_C_natural_choice_set_canonical_vectors_each_direction": 4,
+    "live_C_natural_choice_set_noncanonical_BER_forms": 2,
+    "natural_choice_set_collision_fixtures": 1,
+    "generated_named_sequence_test_functions": 10,
+    "generated_named_empty_child_test_functions": 2,
+    "named_sequence_negative_schema_cases": 13,
+    "live_C_named_sequence_canonical_vectors_each_direction": 18,
+    "live_C_named_sequence_noncanonical_and_boundary_forms": 5,
+    "named_sequence_truncated_prefix_inputs": 13,
+    "named_sequence_mutation_inputs": 34,
+    "named_sequence_exact_strict_CER_work_bits": 792,
+    "generated_named_set_child_test_functions": 6,
+    "named_set_negative_schema_cases": 16,
+    "live_C_named_set_canonical_vectors_each_direction": 12,
+    "live_C_named_set_reorder_malformed_and_bound_forms": 9,
+    "named_set_truncated_prefix_inputs": 17,
+    "named_set_mutation_inputs": 34,
+    "named_set_exact_strict_CER_work_bits": 752,
+    "generated_named_record_pair_test_functions": 9,
+    "named_record_pair_runtime_retry_and_boundary_tests": 3,
+    "live_C_named_record_pair_canonical_vectors_each_direction": 32,
+    "live_C_named_record_pair_reordered_inputs": 3,
+    "live_C_named_record_pair_padding_aliases": 1,
+    "live_C_named_record_pair_rejected_inputs": 4,
+    "named_record_pair_negative_schema_fixtures": 6,
+    "named_record_pair_positive_schema_boundaries": 2,
+    "named_record_pair_truncated_prefix_inputs": 30,
+    "named_record_pair_mutation_inputs": 144,
+    "generated_imported_integer_test_functions": 10,
+    "live_C_imported_integer_canonical_vectors_each_direction": 28,
+    "live_C_imported_integer_malformed_BER_vectors": 6,
+    "live_C_imported_integer_explicit_DEFAULT_CER_rejections": 2,
+    "live_C_imported_integer_decode_then_constraint_checks": 1,
+    "imported_integer_negative_schema_fixtures": 20,
+    "imported_integer_truncated_decoder_inputs": 28,
+    "imported_integer_single_bit_mutation_inputs": 80,
+    "generated_imported_record_test_functions": 8,
+    "live_C_imported_record_canonical_vectors_each_direction": 34,
+    "live_C_imported_record_reversed_order_inputs": 2,
+    "live_C_imported_record_explicit_DEFAULT_rejections": 2,
+    "imported_record_negative_schema_fixtures": 23,
+    "imported_record_truncated_decoder_inputs": 112,
+    "imported_record_single_bit_mutation_inputs": 256,
+    "generated_type_name_test_functions": 2,
+    "type_name_collision_schema_fixtures": 3,
+    "generated_integer_alias_identity_test_functions": 4,
+    "reused_integer_alias_record_test_functions": 8,
+    "integer_alias_negative_schema_fixtures": 21,
+    "integer_alias_unsupported_codec_selections": 12,
+    "live_C_integer_alias_DER_CER_value_pairs": 24,
+    "live_C_integer_alias_canonical_encodings_each_direction": 48,
+    "live_C_integer_alias_noncanonical_TRUE_encode_checks": 8,
+    "imported_record_exact_schema_field_limit": 12,
+    "imported_record_first_rejected_schema_field_count": 13,
+    "generated_boolean_bitset_test_functions": 22,
+    "boolean_bitset_maximum_UPER_fields": 64,
+    "boolean_bitset_mixed_codec_value_combinations": 96,
+    "live_C_boolean_bitset_DER_CER_value_pairs": 5,
+    "live_C_boolean_bitset_canonical_encodings_each_direction": 10,
+    "live_C_boolean_bitset_explicit_DEFAULT_CER_rejections": 1,
+    "boolean_bitset_no_publication_boundary_cases": 2,
+    "boolean_bitset_maximum_optional_UPER_fields": 60
   }
 }

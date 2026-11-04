@@ -25,20 +25,24 @@ check_PROGRAMS =                \
     check-JER                   \
     check-runtime-encoding-failures \
     check-CBOR                  \
+    check-CBOR-open-large       \
     check-binary-dispatch       \
     check-CER                   \
     check-CER-decode            \
     check-BER-expected-tag      \
     check-OCTET_STRING-der-guard \
     check-OCTET_STRING-rfill-guard \
+    check-Unicode-rfill        \
     check-CER-limits            \
     check-CER-resources         \
     check-CER-work              \
     check-CER-scratch           \
     check-OER-support           \
+    check-OER-OPEN-TYPE         \
     check-OER-INTEGER           \
     check-OER-NativeEnumerated  \
     check-APER-support          \
+    check-APER-SET              \
     check-APER-OCTET_STRING     \
     check-APER-INTEGER		\
     check-APER-INTEGER-constraint \
@@ -175,6 +179,7 @@ LDADD_32 = -lm $(top_builddir)/skeletons/libasn1cskeletons_c89_32.la
 endif
 
 check_CBOR_SOURCES=check-CBOR.c
+check_CBOR_open_large_SOURCES = check-CBOR-open-large.c
 check_CER_SOURCES = check-CER.c $(top_srcdir)/skeletons/cer_encoder.c
 check_CER_CPPFLAGS = -DASN_CER_MAX_ENCODED_SIZE=4096u
 check_CER_LDADD = $(LDADD)
@@ -186,6 +191,8 @@ check_OCTET_STRING_der_guard_SOURCES = check-OCTET_STRING-der-guard.c
 check_OCTET_STRING_der_guard_LDADD = $(LDADD)
 check_OCTET_STRING_rfill_guard_SOURCES = check-OCTET_STRING-rfill-guard.c
 check_OCTET_STRING_rfill_guard_LDADD = $(LDADD)
+check_Unicode_rfill_SOURCES = check-Unicode-rfill.c
+check_Unicode_rfill_LDADD = $(LDADD)
 check_CER_limits_SOURCES = check-CER-limits.c \
     $(top_srcdir)/skeletons/cer_encoder.c
 check_CER_limits_CPPFLAGS = \
@@ -213,6 +220,8 @@ check_CER_scratch_CPPFLAGS = \
 check_CER_scratch_LDADD = $(LDADD)
 check_runtime_encoding_failures_SOURCES = check-runtime-encoding-failures.c
 check_runtime_encoding_failures_LDADD = $(LDADD)
+check_OER_OPEN_TYPE_SOURCES = check-OER-OPEN-TYPE.c
+check_OER_OPEN_TYPE_LDADD = $(LDADD)
 
 #Filter out the coverage options from CFLAGS as we don't need
 #code coverage data for the tests executables

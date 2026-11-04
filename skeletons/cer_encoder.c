@@ -1056,8 +1056,6 @@ cer_encode_member(cer_context_t *ctx, const asn_TYPE_descriptor_t *parent_type,
        cer_descriptor_size(parent_type, &parent_size)) {
         return cer_fail(ctx, EBADF, parent_type, parent_value);
     }
-    if(member->flags & ATF_ANY_TYPE) return cer_fail(ctx, ENOENT, member->type,
-                                                      parent_value);
     if(member->flags & ATF_POINTER) {
         member_size = sizeof(void *);
     } else if(cer_inline_value_size(ctx, member->type, &member_size)) {
@@ -1078,6 +1076,9 @@ cer_encode_member(cer_context_t *ctx, const asn_TYPE_descriptor_t *parent_type,
     if(member->default_value_cmp && member->default_value_cmp(view->value) == 0) {
         return 0;
     }
+    /* An absent optional ANY has no opaque value to encode. */
+    if(member->flags & ATF_ANY_TYPE) return cer_fail(ctx, ENOENT, member->type,
+                                                      parent_value);
     if(member->flags & ATF_OPEN_TYPE) {
         if(cer_resolve_open_type(ctx, parent_type, parent_value, member,
                                  view->value, view)) return -1;
@@ -1312,8 +1313,15 @@ cer_primitive_storage_size(cer_context_t *ctx,
         *size = sizeof(BIT_STRING_t);
         return 0;
     }
-    if(number == 4 || number == 6 || number == 7 || number == 13 ||
-       (number >= 12 && number <= 30)) {
+    /* OID adapters use raw primitive storage, without OCTET STRING decoder state. */
+    if(number == 6 || number == 13) {
+        if(!td->op || td->op->der_encoder != der_encode_primitive) {
+            return cer_fail(ctx, EBADF, td, NULL);
+        }
+        *size = sizeof(ASN__PRIMITIVE_TYPE_t);
+        return 0;
+    }
+    if(number == 4 || number == 7 || (number >= 12 && number <= 30)) {
         *size = sizeof(OCTET_STRING_t);
         return 0;
     }
