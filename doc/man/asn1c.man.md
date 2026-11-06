@@ -26,12 +26,11 @@ DER, CER, PER, XER, OER, JER, CBOR and other encoding rules. Its optional
 **--rust** mode generates a Rust Cargo project for the supported subset.
 
 The **--rust** mode generates a standalone Cargo project with a safe runtime
-using the Rust 2021 edition. The current subset provides UPER encoding and
-decoding, and strict CER encoding and decoding, for top-level BOOLEAN, NULL,
-and finite non-extensible INTEGER ranges fitting `i64`. Opt-in BER/DER,
-APER, OER, and JER cover those primitives. UPER alone also supports fixed
-strings, ENUMERATED, and flat SEQUENCE with required or OPTIONAL direct fields.
-Other types and codec combinations produce a diagnostic until implemented.
+using the Rust 2021 edition. UPER and CER are enabled by default, each encoding
+and decoding, and other codecs are opt-in. Coverage is partial and differs by
+codec: see `docs/rust/implementation.md`, installed with the asn1c
+documentation, for the supported ASN.1 types and codec combinations. Other
+types and codec combinations produce a diagnostic until implemented.
 
 # OPTIONS
 
@@ -382,10 +381,9 @@ contains only an output prefix.
 The generated converter can read BER and write CER with
 `./converter-example -iber -ocer input.ber > output.cer`.
 
-The Rust backend currently encodes CER for BOOLEAN, NULL, and bounded
-non-extensible INTEGER ranges fitting `i64`, and generates a strict
-`decode_cer()` that accepts only the canonical short-form TLV. Its UPER and
-CER codecs are enabled by default. To generate only the CER methods, pass
+The Rust backend encodes CER and generates a strict `decode_cer()` only for
+the ASN.1 types listed in `docs/rust/implementation.md`. Its UPER and CER
+codecs are enabled by default. To generate only the CER methods, pass
 `--rust -no-gen-UPER`.
 
 *) Asterisk means both BASIC and CANONICAL variants. Pass `XER_F_BASIC` or
