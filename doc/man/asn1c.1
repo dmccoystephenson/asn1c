@@ -35,12 +35,11 @@ the supported subset.
 .PP
 The \f[B]\-\-rust\f[R] mode generates a standalone Cargo project with a
 safe runtime using the Rust 2021 edition.
-The current subset provides UPER encoding and decoding, and strict CER
-encoding and decoding, for top\-level BOOLEAN, NULL, and finite
-non\-extensible INTEGER ranges fitting \f[CR]i64\f[R].
-Opt\-in BER/DER, APER, OER, and JER cover those primitives.
-UPER alone also supports fixed strings, ENUMERATED, and flat SEQUENCE
-with required or OPTIONAL direct fields.
+UPER and CER are enabled by default, each encoding and decoding, and
+other codecs are opt\-in.
+Coverage is partial and differs by codec: see
+\f[CR]docs/rust/implementation.md\f[R], installed with the asn1c
+documentation, for the supported ASN.1 types and codec combinations.
 Other types and codec combinations produce a diagnostic until
 implemented.
 .SH OPTIONS
@@ -553,10 +552,9 @@ and a short buffer contains only an output prefix.
 The generated converter can read BER and write CER with
 \f[CR]./converter\-example \-iber \-ocer input.ber > output.cer\f[R].
 .PP
-The Rust backend currently encodes CER for BOOLEAN, NULL, and bounded
-non\-extensible INTEGER ranges fitting \f[CR]i64\f[R], and generates a
-strict \f[CR]decode_cer()\f[R] that accepts only the canonical
-short\-form TLV.
+The Rust backend encodes CER and generates a strict
+\f[CR]decode_cer()\f[R] only for the ASN.1 types listed in
+\f[CR]docs/rust/implementation.md\f[R].
 Its UPER and CER codecs are enabled by default.
 To generate only the CER methods, pass
 \f[CR]\-\-rust \-no\-gen\-UPER\f[R].
