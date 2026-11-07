@@ -56,7 +56,8 @@ about 5 hours 27 minutes in randomized tests with -j8, including corpus
 generation. More evenly scheduled individual cases and shared parallel builds
 should shorten the serial tail, but large collection cases, sanitizers, filesystem
 overhead, and repeated runtime compilation still cost time. There are currently
-289 source cases (578 native-mode executions before any optional 32-bit passes).
+321 source cases (642 native-mode executions before any optional 32-bit passes);
+check-corpus prints the current case count when it starts.
 An enabled 32-bit pass increases the work; compiler caching and other future
 build fixes can change the estimate substantially. The focused two-bundle command
 below checks setup but is not representative of the large collection cases.
