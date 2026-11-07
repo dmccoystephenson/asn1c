@@ -18,10 +18,11 @@ The openssl x509 utility may be used to convert between PEM and DER.
 	openssl x509 -inform PEM -in certificate.pem	\
 			-outform DER -out certificate.der
 
-After convertsion, the x509dump utility may be used to dump the contents
-of the DER-encoded X.509 certificate:
+After conversion, the x509dump utility may be used to dump the contents
+of the DER-encoded X.509 certificate. The -iber option is required, because
+the default input format is PER:
 
-	./x509dump certificate.der	# Print as XML (BASIC-XER)
+	./x509dump -iber certificate.der	# Print as XML (BASIC-XER)
 
 The full list of recognized command line options may be obtained with
 
