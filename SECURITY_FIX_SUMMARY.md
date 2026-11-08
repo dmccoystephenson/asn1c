@@ -12,13 +12,21 @@ This security fix addresses CVE-XXXX / GHSA-pc8m-6q65-9mwf by adding recursion d
    - Added thread-local `asn1_encoding_depth` variable declaration (supports C11, GCC/Clang, MSVC, and fallback)
    - Added `ASN__ENCODER_RECURSION_DEPTH_INC()` macro for encoders
    - Added `ASN__ENCODER_RECURSION_DEPTH_DEC()` macro for encoders
-   - Added `ASN__DECODER_RECURSION_DEPTH_CHECK(ctx)` macro for decoders
-   - Added per-codec counterparts for the encodings listed under "Remaining Work":
-     thread-local `uper_encoding_depth`, `aper_encoding_depth`, `oer_encoding_depth`,
+   - Added `ASN__DECODER_RECURSION_DEPTH_CHECK(ctx)` macro for decoders. This
+     macro only emits an `ASN_DEBUG` trace when the limit is reached; it does
+     not abort decoding. Decoding is aborted by `ASN__STACK_OVERFLOW_CHECK(ctx)`,
+     which the decoders call directly (for BER, through `ber_check_tags()`). That
+     check is a stack-usage limit in bytes, not a depth counter. The top-level
+     entry points (`ber_decode()`, `uper_decode()`, `aper_decode()`,
+     `oer_decode()`, `xer_decode()`, `jer_decode()`, `cbor_decode()`) apply
+     `ASN__DEFAULT_STACK_MAX` (30000 bytes) when the codec context is null. A
+     non-null context whose `max_stack_size` is zero disables the check.
+   - Added per-codec counterparts for the other encoding rules: thread-local
+     `uper_encoding_depth`, `aper_encoding_depth`, `oer_encoding_depth`,
      `xer_encoding_depth`, and `jer_encoding_depth`, each with a matching
-     `<RULE>_ENCODER_RECURSION_DEPTH_INC()` / `_DEC()` macro pair. These are declared
-     and defined but not yet invoked by any codec — the remaining work is the call
-     sites, not the infrastructure.
+     `<RULE>_ENCODER_RECURSION_DEPTH_INC()` / `_DEC()` macro pair. These are
+     invoked by the constructed-type encoders listed under "Other Encoding
+     Rules" below.
 
 2. **asn_internal.c**
    - Defined thread-local `asn1_encoding_depth` variable with proper platform detection
@@ -111,64 +119,51 @@ TYPE_decode_ENCODING(/* params */) {
 }
 ```
 
-## Remaining Work
+## Other Encoding Rules
 
-The following files follow the exact same pattern as the completed BER files. Each needs:
-1. Add `<RULE>_ENCODER_RECURSION_DEPTH_INC()` at encoder start
-2. Add `<RULE>_ENCODER_RECURSION_DEPTH_DEC()` before all encoder exits
-3. Add `ASN__DECODER_RECURSION_DEPTH_CHECK(ctx)` after ctx initialization in decoders
+The UPER, APER, OER, XER, and JER constructed-type codecs follow the same
+pattern as the BER files, with the per-rule macro pair in place of the BER one.
 
-where `<RULE>` is `UPER`, `APER`, `OER`, `XER`, or `JER` — those macro pairs already
-exist in `skeletons/asn_internal.h`; only the call sites below are missing.
+Encoders call `<RULE>_ENCODER_RECURSION_DEPTH_INC()` at entry and the matching
+`_DEC()` before every exit, where `<RULE>` is `UPER`, `APER`, `OER`, `XER`, or
+`JER`:
 
-Only the functions actually *defined* in each file are listed below. Several
-SEQUENCE OF and SET codecs are `#define` aliases onto the SET OF / SEQUENCE
-implementation (see `skeletons/constr_SEQUENCE_OF.h` and
-`skeletons/constr_SET.h`), so they are covered by whichever file defines the
-target function rather than needing an edit of their own.
+| Rule | Guarded encoders |
+|------|------------------|
+| UPER | `SEQUENCE_encode_uper()`, `CHOICE_encode_uper()`, `SEQUENCE_OF_encode_uper()`, `SET_OF_encode_uper()` |
+| APER | `SEQUENCE_encode_aper()`, `CHOICE_encode_aper()`, `SEQUENCE_OF_encode_aper()`, `SET_OF_encode_aper()`, `SET_encode_aper()` |
+| OER  | `SEQUENCE_encode_oer()`, `CHOICE_encode_oer()`, `SET_OF_encode_oer()`, `SET_encode_oer()` |
+| XER  | `SEQUENCE_encode_xer()`, `CHOICE_encode_xer()`, `SEQUENCE_OF_encode_xer()`, `SET_OF_encode_xer()`, `SET_encode_xer()` |
+| JER  | `SEQUENCE_encode_jer()`, `CHOICE_encode_jer()`, `SEQUENCE_OF_encode_jer()`, `SET_OF_encode_jer()`, `SET_encode_jer()` |
 
-### UPER Encoding (4 files remaining)
-- `skeletons/constr_SEQUENCE_uper.c` - SEQUENCE_encode_uper(), SEQUENCE_decode_uper()
-- `skeletons/constr_CHOICE_uper.c` - CHOICE_encode_uper(), CHOICE_decode_uper()
-- `skeletons/constr_SEQUENCE_OF_uper.c` - SEQUENCE_OF_encode_uper() (SEQUENCE_OF_decode_uper is an alias for SET_OF_decode_uper)
-- `skeletons/constr_SET_OF_uper.c` - SET_OF_encode_uper(), SET_OF_decode_uper()
+Each function is defined in the matching `skeletons/constr_<TYPE>_<rule>.c`.
+There is no `constr_SEQUENCE_OF_oer.c`, because both SEQUENCE OF OER codecs are
+`#define` aliases for the SET OF ones (`skeletons/constr_SEQUENCE_OF.h`).
 
-### APER Encoding (4 files remaining)
-- `skeletons/constr_SEQUENCE_aper.c` - SEQUENCE_encode_aper(), SEQUENCE_decode_aper()
-- `skeletons/constr_CHOICE_aper.c` - CHOICE_encode_aper(), CHOICE_decode_aper()
-- `skeletons/constr_SEQUENCE_OF_aper.c` - SEQUENCE_OF_encode_aper() (SEQUENCE_OF_decode_aper is an alias for SET_OF_decode_aper)
-- `skeletons/constr_SET_OF_aper.c` - SET_OF_encode_aper(), SET_OF_decode_aper()
+`SET_encode_uper()` (`skeletons/constr_SET_uper.c`) is the one SET encoder
+without a UPER depth guard.
 
-### OER Encoding (3 files remaining)
-- `skeletons/constr_SEQUENCE_oer.c` - SEQUENCE_encode_oer(), SEQUENCE_decode_oer()
-- `skeletons/constr_CHOICE_oer.c` - CHOICE_encode_oer(), CHOICE_decode_oer()
-- `skeletons/constr_SET_OF_oer.c` - SET_OF_encode_oer(), SET_OF_decode_oer() (both SEQUENCE OF OER codecs are aliases for these; there is no `constr_SEQUENCE_OF_oer.c`)
-
-### XER Encoding (5 files remaining)
-- `skeletons/constr_SEQUENCE_xer.c` - SEQUENCE_encode_xer(), SEQUENCE_decode_xer()
-- `skeletons/constr_CHOICE_xer.c` - CHOICE_encode_xer(), CHOICE_decode_xer()
-- `skeletons/constr_SET_xer.c` - SET_encode_xer(), SET_decode_xer()
-- `skeletons/constr_SEQUENCE_OF_xer.c` - SEQUENCE_OF_encode_xer(), SEQUENCE_OF_decode_xer()
-- `skeletons/constr_SET_OF_xer.c` - SET_OF_encode_xer(), SET_OF_decode_xer()
-
-### JER Encoding (5 files remaining)
-- `skeletons/constr_SEQUENCE_jer.c` - SEQUENCE_encode_jer(), SEQUENCE_decode_jer()
-- `skeletons/constr_CHOICE_jer.c` - CHOICE_encode_jer(), CHOICE_decode_jer()
-- `skeletons/constr_SET_jer.c` - SET_decode_jer() (SET has no JER encoder of its own; `constr_SET.c` reuses SEQUENCE_encode_jer per X.697 clause 29)
-- `skeletons/constr_SEQUENCE_OF_jer.c` - SEQUENCE_OF_encode_jer() (SEQUENCE_OF_decode_jer is an alias for SET_OF_decode_jer)
-- `skeletons/constr_SET_OF_jer.c` - SET_OF_encode_jer(), SET_OF_decode_jer()
+Decoders do not use `ASN__DECODER_RECURSION_DEPTH_CHECK()`. The SEQUENCE,
+CHOICE, SET, and SET OF decoders for each of these rules call
+`ASN__STACK_OVERFLOW_CHECK(opt_codec_ctx)` directly and fail when it trips. The
+SEQUENCE OF decoders are aliases for, or wrappers around, the SET OF decoders.
 
 ## Security Impact
 
 ### Addressed
 - ✅ BER/DER encoding stack overflow (most commonly used encoding)
+- ✅ UPER, APER, OER, XER, and JER constructed-type encoders enforce the same
+  depth limit, each with its own counter
 - ✅ Recursion depth limit is enforced
 - ✅ Circular references are detected
 - ✅ Thread-safe implementation
 
 ### Remaining Risk
-- ⚠️ UPER, APER, OER, XER, JER encodings still vulnerable until patches applied
-- However, BER/DER (the most widely used) are now protected
+- ⚠️ `SET_encode_uper()` has no encoder depth guard.
+- ⚠️ Decoders of every encoding rule are limited by stack usage
+  (`ASN__STACK_OVERFLOW_CHECK()`), not by a depth counter. A caller that passes
+  a codec context with `max_stack_size` set to zero, or that invokes a type's
+  decoder function pointer directly with a null context, decodes with no limit.
 
 ## Testing Recommendations
 
@@ -192,15 +187,17 @@ target function rather than needing an edit of their own.
 
 ## Verification Steps
 
-To apply remaining fixes, for each file:
+To guard a constructed-type codec that has no guard yet (such as
+`SET_encode_uper()`):
 1. Locate encoder function (search for `asn_enc_rval_t`)
 2. Add the encoding's `<RULE>_ENCODER_RECURSION_DEPTH_INC()` after variable declarations
 3. Find all `return` and `ASN__ENCODE_FAILED` statements
 4. Add the matching `<RULE>_ENCODER_RECURSION_DEPTH_DEC()` before each exit
 5. Locate decoder function (search for `asn_dec_rval_t`)
-6. Find ctx assignment: `ctx = (asn_struct_ctx_t *)(..)`
-7. Add `ASN__DECODER_RECURSION_DEPTH_CHECK(ctx);` after ctx assignment
-8. Build and test
+6. Add `if(ASN__STACK_OVERFLOW_CHECK(opt_codec_ctx))` with a failure return
+   before the first nested decode, as the sibling decoders of that rule do.
+   `ASN__DECODER_RECURSION_DEPTH_CHECK()` only logs and does not stop decoding.
+7. Build and test
 
 ## References
 
