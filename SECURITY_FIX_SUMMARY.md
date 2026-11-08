@@ -136,7 +136,8 @@ Encoders call `<RULE>_ENCODER_RECURSION_DEPTH_INC()` at entry and the matching
 | XER  | `SEQUENCE_encode_xer()`, `CHOICE_encode_xer()`, `SEQUENCE_OF_encode_xer()`, `SET_OF_encode_xer()`, `SET_encode_xer()` |
 | JER  | `SEQUENCE_encode_jer()`, `CHOICE_encode_jer()`, `SEQUENCE_OF_encode_jer()`, `SET_OF_encode_jer()`, `SET_encode_jer()` |
 
-Each function is defined in the matching `skeletons/constr_<TYPE>_<rule>.c`.
+Each function is defined in the `skeletons/` file named after its type and
+rule; for example, `SET_encode_oer()` is in `skeletons/constr_SET_oer.c`.
 There is no `constr_SEQUENCE_OF_oer.c`, because both SEQUENCE OF OER codecs are
 `#define` aliases for the SET OF ones (`skeletons/constr_SEQUENCE_OF.h`).
 
