@@ -26,6 +26,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include <asn_internal.h>
 #include <M.h>
 #include <S.h>
 #include <S2.h>
@@ -401,12 +402,56 @@ check_EmptyOD_null_codec_gating(void) {
 	}
 }
 
+static void
+check_SET_encoder_depth_guard(void) {
+	/*
+	 * Regression for fork issue #64: SET_encode_uper() must take part
+	 * in the UPER encoder recursion-depth guard like its SEQUENCE,
+	 * CHOICE, SEQUENCE OF and SET OF siblings. S2's members are
+	 * primitives with no guard of their own, so a refusal at the
+	 * limit can only come from the SET encoder itself.
+	 */
+	unsigned char buf[8];
+	asn_enc_rval_t er;
+	S2_t s2;
+	S4_t s4;
+
+	memset(&s2, 0, sizeof(s2));
+	s2.a = 1;
+	s2.b = 1;
+
+	/* At the limit the SET encoder must refuse, without moving depth. */
+	uper_encoding_depth = ASN_STACK_OVERFLOW_LIMIT;
+	er = uper_encode_to_buffer(&asn_DEF_S2, 0, &s2, buf, sizeof buf);
+	assert(er.encoded == -1);
+	assert(er.failed_type == &asn_DEF_S2);
+	assert(uper_encoding_depth == ASN_STACK_OVERFLOW_LIMIT);
+
+	/* A successful encode restores the depth it started from. */
+	uper_encoding_depth = 0;
+	er = uper_encode_to_buffer(&asn_DEF_S2, 0, &s2, buf, sizeof buf);
+	assert(er.encoded == 9);
+	assert(uper_encoding_depth == 0);
+
+	/*
+	 * A failure after the guard was entered (mandatory member c
+	 * absent) must restore the depth exactly once.
+	 */
+	memset(&s4, 0, sizeof(s4));
+	s4.n = 7;
+	s4.c = 0;
+	er = uper_encode_to_buffer(&asn_DEF_S4, 0, &s4, buf, sizeof buf);
+	assert(er.encoded == -1);
+	assert(uper_encoding_depth == 0);
+}
+
 int main() {
 	check_M_roundtrip();
 	check_S2_canonical_order();
 	check_S3_presence_and_default();
 	check_S4_untagged_choice_order();
 	check_EmptyOD_null_codec_gating();
+	check_SET_encoder_depth_guard();
 
 	printf("Finished OK\n");
 	return 0;
