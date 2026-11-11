@@ -130,7 +130,7 @@ Encoders call `<RULE>_ENCODER_RECURSION_DEPTH_INC()` at entry and the matching
 
 | Rule | Guarded encoders |
 |------|------------------|
-| UPER | `SEQUENCE_encode_uper()`, `CHOICE_encode_uper()`, `SEQUENCE_OF_encode_uper()`, `SET_OF_encode_uper()` |
+| UPER | `SEQUENCE_encode_uper()`, `CHOICE_encode_uper()`, `SEQUENCE_OF_encode_uper()`, `SET_OF_encode_uper()`, `SET_encode_uper()` |
 | APER | `SEQUENCE_encode_aper()`, `CHOICE_encode_aper()`, `SEQUENCE_OF_encode_aper()`, `SET_OF_encode_aper()`, `SET_encode_aper()` |
 | OER  | `SEQUENCE_encode_oer()`, `CHOICE_encode_oer()`, `SET_OF_encode_oer()`, `SET_encode_oer()` |
 | XER  | `SEQUENCE_encode_xer()`, `CHOICE_encode_xer()`, `SEQUENCE_OF_encode_xer()`, `SET_OF_encode_xer()`, `SET_encode_xer()` |
@@ -141,8 +141,9 @@ rule; for example, `SET_encode_oer()` is in `skeletons/constr_SET_oer.c`.
 There is no `constr_SEQUENCE_OF_oer.c`, because both SEQUENCE OF OER codecs are
 `#define` aliases for the SET OF ones (`skeletons/constr_SEQUENCE_OF.h`).
 
-`SET_encode_uper()` (`skeletons/constr_SET_uper.c`) is the one SET encoder
-without a UPER depth guard.
+`tests/tests-c-compiler/check-src/check-543.-gen-UPER.c` checks that
+`SET_encode_uper()` refuses to encode at the limit and restores
+`uper_encoding_depth` after a successful and a failed encode.
 
 Decoders do not use `ASN__DECODER_RECURSION_DEPTH_CHECK()`. The SEQUENCE,
 CHOICE, SET, and SET OF decoders for each of these rules call
@@ -160,7 +161,6 @@ SEQUENCE OF decoders are aliases for, or wrappers around, the SET OF decoders.
 - ✅ Thread-safe implementation
 
 ### Remaining Risk
-- ⚠️ `SET_encode_uper()` has no encoder depth guard.
 - ⚠️ Decoders of every encoding rule are limited by stack usage
   (`ASN__STACK_OVERFLOW_CHECK()`), not by a depth counter. A caller that passes
   a codec context with `max_stack_size` set to zero, or that invokes a type's
@@ -188,8 +188,7 @@ SEQUENCE OF decoders are aliases for, or wrappers around, the SET OF decoders.
 
 ## Verification Steps
 
-To guard a constructed-type codec that has no guard yet (such as
-`SET_encode_uper()`):
+To guard a new constructed-type codec:
 1. Locate encoder function (search for `asn_enc_rval_t`)
 2. Add the encoding's `<RULE>_ENCODER_RECURSION_DEPTH_INC()` after variable declarations
 3. Find all `return` and `ASN__ENCODE_FAILED` statements
