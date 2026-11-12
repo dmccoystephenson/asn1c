@@ -1,4 +1,9 @@
 Changes since v1.5.3:
+	* SET_encode_uper() now takes part in the UPER encoder recursion-depth
+	  guard like the other UPER constructed-type encoders: it fails at
+	  ASN_STACK_OVERFLOW_LIMIT and restores uper_encoding_depth on every
+	  exit. check-543 asserts the refusal and the depth balance (fork
+	  issue #64).
 	* Ship the issue-590/591 inputs of tests/tests-integer-native/ in
 	  `make dist` (they were missing from the explicit EXTRA_DIST list, so
 	  run.sh failed from a release tarball). Added check-integer-native-dist.sh,
