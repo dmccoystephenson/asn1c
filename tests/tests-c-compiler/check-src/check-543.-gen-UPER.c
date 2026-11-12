@@ -427,11 +427,16 @@ check_SET_encoder_depth_guard(void) {
 	assert(er.failed_type == &asn_DEF_S2);
 	assert(uper_encoding_depth == ASN_STACK_OVERFLOW_LIMIT);
 
+	/*
+	 * The remaining checks start from a non-zero depth: the DEC macro
+	 * clamps at zero, so a double decrement would be invisible from 0.
+	 */
+
 	/* A successful encode restores the depth it started from. */
-	uper_encoding_depth = 0;
+	uper_encoding_depth = 3;
 	er = uper_encode_to_buffer(&asn_DEF_S2, 0, &s2, buf, sizeof buf);
 	assert(er.encoded == 9);
-	assert(uper_encoding_depth == 0);
+	assert(uper_encoding_depth == 3);
 
 	/*
 	 * A failure after the guard was entered (mandatory member c
@@ -442,7 +447,9 @@ check_SET_encoder_depth_guard(void) {
 	s4.c = 0;
 	er = uper_encode_to_buffer(&asn_DEF_S4, 0, &s4, buf, sizeof buf);
 	assert(er.encoded == -1);
-	assert(uper_encoding_depth == 0);
+	assert(uper_encoding_depth == 3);
+
+	uper_encoding_depth = 0;
 }
 
 int main() {
