@@ -574,6 +574,8 @@ manually. }\\
 {\ttfamily -fline-refs} & {\small Include ASN.1 module's line numbers in generated code comments.}\\
 {\ttfamily -fno-constraints} & {\small Do not generate the ASN.1 subtype constraint checking code. This
 may produce a shorter executable.}\\
+{\ttfamily -ftolerant-utc-time} & {\small Preserve legacy permissive UTCTime decoding. See
+\fref{sec:utc-time-validation}.}\\
 {\ttfamily -fno-include-deps} & {\small Do not generate the courtesy \#include lines for non-critical dependencies.}\\
 {\ttfamily -fprefer-import-source} & {\small Require an explicit name listing in the IMPORTS group (xp\_members) for a symbol to be
 considered as imported from that group, instead of falling back to scanning the whole body of the FROM module. Fixes ambiguous same-name imports.}\\
@@ -615,6 +617,37 @@ to explain its internal understanding of subtype constraints.}\\
 in \texttt{-E} output.}\\
 \end{longtable}
 \renewcommand{\arraystretch}{1}
+
+\clearpage
+\subsection{UTCTime validation}\label{sec:utc-time-validation}
+
+The C runtime and generated Rust BER decoder validate UTCTime syntax, clock
+ranges, and real calendar dates by default, independently of generated subtype constraints.
+The C \texttt{-fno-constraints} option does not disable this check. Strict mode
+accepts optional seconds and requires \texttt{Z} or a complete
+\texttt{+hhmm}/\texttt{-hhmm} offset, as described by ITU-T X.680 clauses
+47.2 and 47.3 at \url{https://www.itu.int/rec/T-REC-X.680-202102-I/en}.
+The C runtime's existing year mapping of 00--59 to 2000--2059 and 60--99 to
+1960--1999 is retained; it is not an RFC 5280 profile check. The validation
+change applies only to UTCTime; GeneralizedTime behavior is unchanged.
+
+\texttt{-ftolerant-utc-time} selects the legacy permissive behavior. For C
+output, it defines this macro in generated \texttt{asn\_config.h}:
+\begin{quote}
+\texttt{ASN\_\allowbreak{}ENABLE\_\allowbreak{}TOLERANT\_\allowbreak{}UTCTIME}
+\end{quote}
+When using a separately built runtime, define the macro while compiling all
+runtime skeleton objects. Defining it only in application code cannot change
+a prebuilt runtime. With \texttt{-R}, build the runtime directly with the
+macro because runtime support and its configuration header are omitted. For
+Rust output, it selects the tolerant BER decoder in the generated type without
+a Cargo feature; DER encoding remains raw and CER validation remains strict.
+
+The strict UTCTime constraint callback checks syntax and calendar fields
+without converting through \texttt{time\_t}. \texttt{asn\_UT2time()} uses
+\texttt{time\_t}, returns \texttt{(time\_t)-1} for errors, and may return the
+same value for the valid UTC instant 1969-12-31 23:59:59. Conversion is also
+limited by the platform's \texttt{time\_t} representation.
 
 
 \chapter{API reference}
@@ -1586,8 +1619,11 @@ The \code{cbor_decode()} function decodes a CBOR-encoded (Concise Binary
 Object Representation, RFC~8949) data stream into the target ASN.1 structure.
 
 CBOR provides a compact, self-describing binary encoding format.
-The decoder follows canonical CBOR rules: only definite-length items are
-accepted. Integer values are decoded from CBOR major type 0 (unsigned) and
+Typed values use the repository's definite-length CBOR profile; the decoder
+also accepts nonminimal integer and length heads. Unknown extension values
+may contain indefinite arrays, maps and chunked strings. REAL accepts
+binary16, binary32 and binary64 encodings. Integer values are decoded from
+CBOR major type 0 (unsigned) and
 major type 1 (negative), with bignum tags (2 and 3) used for values that
 exceed the 64-bit range. SEQUENCE and SET types are decoded from CBOR maps,
 SEQUENCE~OF and SET~OF from CBOR arrays, and CHOICE from a single-entry
@@ -1597,8 +1633,9 @@ The decoder is \emph{tag-transparent}: any number of leading CBOR tag headers
 (major type~6, RFC~8949 \S3.4) are silently skipped before the underlying
 value is decoded. This means that tagged CBOR data items produced by other
 implementations---such as self-described CBOR (tag~55799), epoch-based
-timestamps (tag~1), or URI-annotated byte strings (tag~32)---are accepted
-without changes to the application code.
+timestamps (tag~1), or URI text strings (tag~32)---can be accepted when the
+underlying type matches. Except for INTEGER bignums, registered tag semantics
+are the application's responsibility.
 
 \subsection*{Return values}
 
@@ -1623,13 +1660,15 @@ asn_enc_rval_t cbor_encode(
 \subsection*{Description}
 
 The \code{cbor_encode()} function serializes the given structure into a
-canonical CBOR (Concise Binary Object Representation, RFC~8949) byte stream.
+CBOR (Concise Binary Object Representation, RFC~8949) byte stream.
 
-The encoder produces canonical (DER-like) output: integers use the shortest
-possible CBOR encoding, all lengths are definite, and SEQUENCE fields are
+Integers use shortest heads and minimal bignums; REAL uses the shortest exact
+IEEE~754 width, including subnormals, and emits NaN as f9~7e~00. All lengths
+are definite, and SEQUENCE fields are
 encoded in definition order. Absent optional and default-valued fields are
 skipped so that the CBOR map header count always matches the number of encoded
-key/value pairs.
+key/value pairs. Map definition order is not RFC~8949 core deterministic
+key order; complete deterministic-CBOR conformance is not claimed.
 
 \subsection*{Return values}
 
@@ -1748,9 +1787,11 @@ ssize_t cbor_skip_item(const uint8_t *buf, size_t size);
 CBOR tags~2 and~3 are treated specially by the INTEGER decoder.
 They encode arbitrarily large positive (tag~2) and negative (tag~3)
 integers as byte strings, allowing ASN.1 INTEGER values that exceed the
-64-bit signed range to be represented in CBOR.  These tags are emitted
+ordinary major-type 0/1 range to be represented in CBOR. These tags are emitted
 automatically by the INTEGER encoder when the value requires more than
-64 bits.
+64 magnitude bits. Leading zeros and empty bignum payloads are accepted
+on input. The raw item scanner enforces a hard 128-level nesting limit,
+including builds in which stack checks are disabled.
 
 \chapter{API usage examples}
 

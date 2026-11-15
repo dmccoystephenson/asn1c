@@ -42,6 +42,32 @@ Compile all decoder skeleton objects with the macro and perform a clean rebuild;
 defining it only in application code does not change an already-built runtime
 library. Compatibility warning contributed by <shakespark@gmail.com>.
 
+#### UTCTime validation
+
+The C runtime and generated Rust BER decoder validate `UTCTime` syntax, clock
+ranges, and real calendar dates by default. The accepted ASN.1 forms have
+optional seconds and either `Z` or a complete `+hhmm` / `-hhmm` offset. The
+C runtime's existing two-digit year mapping remains `00..59` to 2000..2059
+and `60..99` to 1960..1999; it is not an RFC 5280 profile check. C's
+`-fno-constraints` option does not disable decode validation.
+
+Use `asn1c -ftolerant-utc-time` to retain legacy permissive `UTCTime`
+decoding. For C output, the option records `ASN_ENABLE_TOLERANT_UTCTIME` in
+generated `asn_config.h`. When reusing a separately built C runtime, define
+that macro while compiling its skeleton objects; defining it only in
+application code cannot change an already-built runtime. `-R` omits C runtime
+support and configuration files, so configure the separately built runtime
+directly. For Rust output, the option selects a tolerant BER decoder in the
+generated type; it does not require a Cargo feature. Rust DER encoding stays
+raw and canonical CER validation remains strict. The option affects
+`UTCTime`; `GeneralizedTime` behavior is unchanged.
+
+`asn_UT2time()` uses `time_t` and returns `(time_t)-1` for errors, which can
+collide with the valid UTC instant 1969-12-31 23:59:59. Use the UTCTime
+constraint callback to check syntax when that distinction matters; time
+conversion remains subject to the platform's representable `time_t` range.
+The syntax follows [ITU-T X.680, clauses 47.2 and 47.3](https://www.itu.int/rec/T-REC-X.680-202102-I/en).
+
 See [ChangeLog](ChangeLog) for the complete release history and
 [release-notes/v1.5.3.md](release-notes/v1.5.3.md) for these release notes,
 [release-notes/v1.4.2.md](release-notes/v1.4.2.md) for v1.4.2, and
@@ -124,6 +150,12 @@ universal OCTET STRING tags for the fragments; BIT STRING fragments use their
 universal BIT STRING tag. BER input also preserves legacy opaque `ANY`
 containers under the bounds described in that audit.
 
+The C BER decoder validates each primitive BIT STRING fragment: its content
+must include an unused-bit count from 0 through 7, and an empty payload must
+have count zero. Only the final component may have unused bits (X.690 8.6.4).
+These checks also apply to nested constructed values and incremental input;
+malformed fragments fail decoding instead of silently changing the value.
+
 In Rust output mode, CER supports top-level BOOLEAN, NULL, finite
 nonextensible INTEGER values whose bounds fit signed 64-bit integers, direct
 nonextensible ENUMERATED values fitting signed 64-bit integers, and direct
@@ -159,7 +191,9 @@ decoding with `-gen-APER` and `-gen-OER`.
 Basic/canonical OER, UPER, and APER selectors share each family's decoder;
 CBOR has its own encoder and decoder. Support still depends on the generated
 type's codec operations and enabled codec families. See the
-[binary codec audit](docs/binary-codec-support.md) for dispatch details and limits.
+[binary codec audit](docs/binary-codec-support.md) for dispatch details and limits,
+and the [CBOR standards review](docs/cbor-standards-review.md) for the supported
+profile, IETF references, and interoperability changes.
 
 ## XER and JER Encoding Instructions
 
@@ -205,9 +239,10 @@ for a short installation guide.
 standalone Cargo package with safe, dependency-free UPER and CER codecs for
 BOOLEAN, NULL, and finite nonextensible INTEGER ranges fitting `i64`.
 APER, OER, BER/DER, and JER are available for selected direct primitive types
-when explicitly enabled. Unsupported schemas, codec requests, and C-specific
-output options fail with diagnostics. Build the generated package with Cargo
-in offline mode.
+when explicitly enabled. Unsupported schemas and unavailable codec requests
+fail with diagnostics. `-ftolerant-utc-time` selects legacy UTCTime BER
+decoding in the generated type. Build the generated package with Cargo in
+offline mode.
 
 With UPER as the only selected codec (`-no-gen-CER`), SEQUENCE assignments can
 contain required, OPTIONAL, and supported primitive DEFAULT fields, including

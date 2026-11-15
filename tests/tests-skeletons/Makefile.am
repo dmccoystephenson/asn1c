@@ -10,6 +10,9 @@ check_PROGRAMS =                \
     check-OCTET_STRING          \
     check-UTF8String            \
     check-UTCTime               \
+    check-UTCTime-tolerant      \
+    check-UTCTime-codecs        \
+    check-UTCTime-codecs-tolerant \
     check-INTEGER               \
     check-BER-NativeInteger-uint64 \
     check-REAL                  \
@@ -25,6 +28,8 @@ check_PROGRAMS =                \
     check-JER                   \
     check-runtime-encoding-failures \
     check-CBOR                  \
+    check-CBOR-integer-preferred \
+    check-CBOR-wellformed       \
     check-CBOR-open-large       \
     check-binary-dispatch       \
     check-CER                   \
@@ -65,6 +70,15 @@ check_PROGRAMS =                \
     check-APER-NativeEnumerated \
     check-PER-nsnnwn            \
     check-PER-strict-ext
+
+# Compile a second UTCTime object with the legacy compatibility option enabled.
+check_UTCTime_tolerant_CPPFLAGS = -DASN_ENABLE_TOLERANT_UTCTIME
+check_UTCTime_tolerant_SOURCES = check-UTCTime.c \
+    $(top_srcdir)/skeletons/UTCTime.c
+check_UTCTime_codecs_SOURCES = check-UTCTime-codecs.c
+check_UTCTime_codecs_tolerant_CPPFLAGS = -DASN_ENABLE_TOLERANT_UTCTIME
+check_UTCTime_codecs_tolerant_SOURCES = check-UTCTime-codecs.c \
+    $(top_srcdir)/skeletons/UTCTime.c
 
 check_PER_strict_ext_CFLAGS = -DASN_REJECT_UNKNOWN_EXTENSIONS
 check_PER_strict_ext_SOURCES = check-PER-strict-ext.c
@@ -179,6 +193,8 @@ LDADD_32 = -lm $(top_builddir)/skeletons/libasn1cskeletons_c89_32.la
 endif
 
 check_CBOR_SOURCES=check-CBOR.c
+check_CBOR_integer_preferred_SOURCES = check-CBOR-integer-preferred.c
+check_CBOR_wellformed_SOURCES = check-CBOR-wellformed.c
 check_CBOR_open_large_SOURCES = check-CBOR-open-large.c
 check_CER_SOURCES = check-CER.c $(top_srcdir)/skeletons/cer_encoder.c
 check_CER_CPPFLAGS = -DASN_CER_MAX_ENCODED_SIZE=4096u
@@ -244,3 +260,6 @@ TESTS_ENVIRONMENT=                      \
     ${srcdir}/disable-leak-check-m32.sh
 
 EXTRA_DIST = disable-leak-check-m32.sh
+
+# Optional libFuzzer target; build instructions are in the CBOR standards review.
+EXTRA_DIST += fuzz-CBOR-support.c

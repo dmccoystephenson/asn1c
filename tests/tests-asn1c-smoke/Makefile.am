@@ -50,6 +50,7 @@ TESTS += check-issue-588.sh
 TESTS += check-issue-587.sh
 TESTS += check-integer-native-dist.sh
 TESTS += check-issue-607.sh
+TESTS += check-issue-596.sh
 
 CLEANFILES = Makefile.am.* *.[acho] check-*.log check-*.trs
 
