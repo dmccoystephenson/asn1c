@@ -809,30 +809,41 @@ SET_encode_uper(const asn_TYPE_descriptor_t *td,
 
 	ASN_DEBUG("Encoding %s as SET (UPER)", td->name);
 
-    if(specs->extensible >= 2 && SET__uper_storage(td, sptr)) ASN__ENCODE_FAILED;
+    UPER_ENCODER_RECURSION_DEPTH_INC();
+
+    if(specs->extensible >= 2 && SET__uper_storage(td, sptr)) goto failed_recursive;
     root_count = specs->extensible >= 2 ? specs->root_count : td->elements_count;
     if(specs->extensible >= 2) {
         for(i = 0; i < specs->extension_count; i++) {
             int present = SET__uper_present(td, sptr, specs->extension_map[i]);
-            if(present < 0) ASN__ENCODE_FAILED;
+            if(present < 0) goto failed_recursive;
             if(present) extpresent = 1;
         }
-        if(per_put_few_bits(po, extpresent, 1)) ASN__ENCODE_FAILED;
+        if(per_put_few_bits(po, extpresent, 1)) goto failed_recursive;
     }
 
-    if(SET__uper_order_alloc(td, specs, &corder)) ASN__ENCODE_FAILED;
+    if(SET__uper_order_alloc(td, specs, &corder)) goto failed_recursive;
 
     if(SET__uper_root_bitmap(td, sptr, corder, root_count, po)) {
         FREEMEM(corder);
-        ASN__ENCODE_FAILED;
+        goto failed_recursive;
     }
     er = SET__uper_root_put(td, sptr, corder, root_count, po);
-    if(er.encoded == -1) { FREEMEM(corder); return er; }
+    if(er.encoded == -1) {
+        FREEMEM(corder);
+        UPER_ENCODER_RECURSION_DEPTH_DEC();
+        return er;
+    }
 
 	FREEMEM(corder);
-    if(extpresent && SET__uper_extensions(td, (void *)sptr, 0, 0, po, 0)) ASN__ENCODE_FAILED;
+    if(extpresent && SET__uper_extensions(td, (void *)sptr, 0, 0, po, 0)) goto failed_recursive;
 
+    UPER_ENCODER_RECURSION_DEPTH_DEC();
 	ASN__ENCODED_OK(er);
+
+failed_recursive:
+    UPER_ENCODER_RECURSION_DEPTH_DEC();
+    ASN__ENCODE_FAILED;
 }
 
 #endif  /* ASN_DISABLE_UPER_SUPPORT */
