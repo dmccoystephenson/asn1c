@@ -44,7 +44,7 @@ EXTRA_DIST +=                           \
     docs/pr-539-547-evaluation.md
 
 # Preserve documentation paths in release archives and installed documentation.
-nobase_dist_docs_DATA = docs/binary-codec-support.md docs/cer-encoder-plan.md \
+nobase_dist_docs_DATA = docs/binary-codec-support.md docs/cbor-standards-review.md docs/cer-encoder-plan.md \
     docs/issues-578-581-security-review.md docs/jer-streaming-design.md \
     docs/issues-582-584-review.md docs/issues-582-per-alphabet.md \
     docs/issues-583-extension-groups.md docs/set-extension-groups.md \

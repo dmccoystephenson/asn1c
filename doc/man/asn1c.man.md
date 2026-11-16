@@ -1,8 +1,8 @@
 ---
 title: "asn1c(1) ASN.1 Compiler"
 author:
-  - "Lev Walkin <vlm@lionet.info>"
-  - "Mouse <5923577+mouse07410@users.noreply.github.com>"
+  - 'Lev Walkin \<vlm@lionet.info\>'
+  - 'Mouse \<5923577+mouse07410@users.noreply.github.com\>'
 date: "October 11, 2026"
 ---
 
@@ -40,8 +40,10 @@ types and codec combinations produce a diagnostic until implemented.
 :   Select the complete Rust output mode, including Rust types, codec methods,
     Cargo metadata, and a copied native Rust runtime. The current default codec
     set is UPER and CER, each encoding and decoding. `-no-gen-UPER` selects
-    CER-only output; `-no-gen-CER` leaves UPER enabled. Explicit requests for
-    unavailable codecs and C-specific output options fail. The default output directory in this
+    CER-only output; `-no-gen-CER` leaves UPER enabled. Unavailable codec
+    requests fail; `-ftolerant-utc-time` is supported and selects legacy
+    UTCTime BER decoding.
+    The default output directory in this
     mode is `asn1c-rust`. Build the generated package with
     `cargo check --offline --manifest-path asn1c-rust/Cargo.toml`.
 
@@ -152,6 +154,30 @@ cargo check --offline --manifest-path generated/Cargo.toml
 -fno-constraints
 :   Do not generate ASN.1 subtype constraint checking code.
     This may make a shorter executable.
+
+-ftolerant-utc-time
+:   Keep legacy permissive `UTCTime` decoding. By default, the C runtime and
+    generated Rust BER decoder validate UTCTime syntax, clock ranges, and
+    calendar dates independently of generated subtype constraint checks;
+    C's `-fno-constraints` does not turn off this validation.
+    Strict mode accepts optional seconds and requires `Z` or a complete
+    `+hhmm` / `-hhmm` offset. The legacy year mapping remains `00..59` to
+    2000..2059 and `60..99` to 1960..1999; it is not an RFC 5280 profile
+    check. For C output, this option emits `ASN_ENABLE_TOLERANT_UTCTIME` in
+    generated `asn_config.h`. When using a separately built C runtime, define
+    the macro while compiling the runtime skeleton objects; defining it only
+    in application code does not affect a prebuilt runtime. With `-R`, build
+    the runtime with the macro directly because runtime support and its
+    configuration header are omitted. For Rust output, the generated type
+    selects a tolerant BER decoder without a Cargo feature; DER encoding
+    remains raw and CER validation remains strict.
+    The strict UTCTime constraint callback checks syntax and calendar fields
+    without converting through `time_t`. `asn_UT2time()` does convert through
+    `time_t`, returns `(time_t)-1` for errors, and may return the same value
+    for the valid UTC instant 1969-12-31 23:59:59; its range also depends on
+    the platform's `time_t` representation. See X.680 47.2 and 47.3 at
+    <https://www.itu.int/rec/T-REC-X.680-202102-I/en>.
+    The option affects UTCTime only; GeneralizedTime behavior is unchanged.
 
 -fno-include-deps
 :   Do not generate courtesy #include lines for non-critical type dependencies.
@@ -346,6 +372,8 @@ See the `asn1c-usage.pdf` for details.
 | JER-MINIFIED | `jer_encode()` | JER | `jer_decode()` |
 | CBOR | `cbor_encode()` | CBOR | `cbor_decode()` |
 
+For CANONICAL-XER, call `xer_encode()` with `XER_F_CANONICAL`.
+
 CER encoding uses `cer_encode()` or `asn_encode(ATS_CER, ...)`; the generated
 converter accepts `-ocer` output. The C backend generates CER support by
 default, and the `ASN_DISABLE_CER_SUPPORT` build macro disables both the
@@ -452,7 +480,7 @@ for well-known tags (e.g., `CBOR_TAG_DATETIME_STRING`, `CBOR_TAG_URI`,
 
 **Decoding:** All asn1c CBOR decoders are *tag-transparent*: any number
 of leading tag headers are silently consumed before the underlying value
-is decoded.  No application changes are required to accept tagged data.
+is decoded. Applications must validate registered tag semantics as needed.
 The helper `cbor_skip_tags(buf, size)` (in `cbor_support.h`) returns the
 number of bytes occupied by leading tag headers, or -1 on error.
 When decoder code must skip a complete raw CBOR value, it should call
@@ -462,7 +490,12 @@ wrapper `cbor_skip_item(buf, size)` remains available for callers without
 decoder context.
 
 **Bignum tags:** Tags 2 and 3 are used internally by the INTEGER encoder
-and decoder for values that exceed the 64-bit signed range, per RFC 8949.
+and decoder for values beyond the ordinary major-type 0/1 range, per RFC 8949.
+
+Typed containers use definite lengths. REAL accepts binary16/32/64 and emits
+shortest exact widths; NaN is f9 7e 00. Maps retain definition order and do
+not claim deterministic key ordering. Raw item scanning accepts indefinite
+containers and imposes a 128-level nesting limit even with stack checks disabled.
 
 # EXIT STATUS
 

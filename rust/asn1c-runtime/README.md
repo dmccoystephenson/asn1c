@@ -221,17 +221,26 @@ sequence may cross a fragment boundary. Strict CER re-encoding and comparison
 share cumulative input, output, work, and scratch limits.
 
 `UtcTime` owns raw UTCTime content bytes. Its fallible constructor and
-`as_bytes` accessor do not apply time syntax checks. `decode_utc_time_ber` accepts
-primitive or nested constructed tag-23 values with universal tag-4 fragments,
-preserves the raw content, and reports exact prefix consumption;
-`encode_utc_time_der` preserves those bytes in primitive tag 23. CER encoding
-validates the permitted 11/13/15/17-byte forms, Gregorian date and clock,
-1950/2049 year pivot, and numeric zone, then converts to UTC and writes exactly
-`YYMMDDhhmmssZ`. Strict CER decoding re-encodes and compares only the consumed
-prefix. Calendar conversion uses checked Gregorian arithmetic, so the valid UTC
-instant 1969-12-31 23:59:59 is accepted even where the C `time_t == -1` sentinel
-rejects it. Input, output, retained capacity, scratch, and cumulative work limits
-apply to the UTCTime operations.
+`as_bytes` accessor do not apply time syntax checks. `decode_utc_time_ber`
+accepts primitive or nested constructed tag-23 values with universal tag-4
+fragments, validates decoded UTCTime syntax, clock ranges, and Gregorian
+calendar dates, preserves raw content, and reports exact prefix consumption.
+`decode_utc_time_ber_tolerant` is the explicit legacy raw-content compatibility
+entry point. `encode_utc_time_der` preserves raw bytes in primitive tag 23.
+Generated Rust BER decoding validates UTCTime lexical forms, clock ranges, and
+Gregorian calendar dates by default. The compiler option
+`-ftolerant-utc-time` selects the tolerant BER entry point in generated types
+without a Cargo feature; raw construction and DER encoding are unchanged.
+CER encoding validates the permitted
+11/13/15/17-byte forms, Gregorian date and clock, 1950/2049 year pivot, and
+numeric zone, then converts to UTC and writes exactly `YYMMDDhhmmssZ`. This
+existing Rust CER pivot remains separate from the C runtime's 1960/2059 year
+mapping. Strict
+CER decoding re-encodes and compares only the consumed prefix regardless of
+the tolerant BER option. Calendar conversion uses checked Gregorian arithmetic,
+so the valid UTC instant 1969-12-31 23:59:59 is accepted even where the C
+`time_t == -1` sentinel rejects it. Input, output, retained capacity, scratch,
+and cumulative work limits apply to the UTCTime operations.
 
 `GeneralizedTime` owns raw content bytes and exposes them through `as_bytes`;
 its fallible constructor and BER decoder preserve arbitrary bytes. BER accepts
@@ -452,17 +461,25 @@ cargo clippy --manifest-path rust/asn1c-runtime/Cargo.toml \
 ```
 
 CBOR primitive APIs encode BOOLEAN, NULL, bounded signed INTEGER and opaque
-ANY. They decode one definite prefix, accept leading semantic tags and
-nonminimal definite heads, and reject INTEGER bignum tags and indefinite byte
-strings. ANY is represented as a definite CBOR byte string and is limited to
-`INT32_MAX` octets for compatibility with the C `ANY_t` size field.
+ANY. They decode one definite prefix and accept leading semantic tags and
+nonminimal definite heads. Bounded INTEGER decoding accepts tagged bignums
+(tags 2 and 3) when the value fits `i64`; redundant leading zero magnitude
+octets are ignored, and empty magnitudes represent zero or negative one.
+Reserved simple values encoded with AI=24 and arguments `0..=31` are rejected,
+while larger simple values and floating-point values can be skipped in map
+values. Typed primitive decoders accept only definite items. Map-value skipping
+also accepts indefinite arrays, maps, byte strings, and text strings; text
+chunks are validated independently as UTF-8, and malformed chunks or maps with
+unmatched keys are rejected. ANY is represented as a definite CBOR byte string
+and is limited to `INT32_MAX` octets for compatibility with the C `ANY_t` size
+field.
 
 `cbor::encode_map` and `cbor::decode_map` support generated flat SEQUENCE
 values as definite text-key maps. The encoder preserves entry order and rejects
 duplicate keys or non-complete CBOR values. The decoder accepts leading tags
 and nonminimal definite heads, rejects duplicate keys, and returns borrowed
-complete value spans. Unknown definite nested values can be skipped up to 64
-levels; indefinite items and invalid UTF-8 text keys remain unsupported. The
+complete value spans. Unknown definite or indefinite nested values can be
+skipped up to 64 levels; invalid UTF-8 text keys remain unsupported. The
 generated decoder validates
 each known value consumes its entire span and checks required members.
 
