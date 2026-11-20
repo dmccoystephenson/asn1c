@@ -293,8 +293,11 @@ asn1c_lang_C_type_common_INTEGER(arg_t *arg) {
 			OUT("\t/* This list is extensible */\n");
 		OUT("};\n");
 		
-		/* Only generate custom validation for NativeEnumerated types */
-		if(expr->expr_type == ASN_BASIC_ENUMERATED && asn1c_type_fits_long(arg, expr)) {
+        /* Strict mode uses NativeEnumerated_constraint: it validates the full
+         * native long and retains standards-defined unknown PER additions.
+         * The legacy enum-width switch remains a compatibility-only callback. */
+        if(!(arg->flags & A1C_STRICT_MODE)
+           && expr->expr_type == ASN_BASIC_ENUMERATED && asn1c_type_fits_long(arg, expr)) {
                 /*
                  * Use the proper naming functions to get the enum type and
                  * constant names. c_name(arg).members_name gives us "e_xxx"
@@ -3922,6 +3925,94 @@ constraint_is_component_relation_only(const asn1p_constraint_t *constraint) {
 	return 1;
 }
 
+/*
+ * Purpose: Calculate PER range_bits and effective_bits for a concrete range.
+ * Original source: mr-j0nes, PR #612; extracted from the PER constraint emitter.
+ * Version/date: 1.0, 2026-11-17.
+ * Inputs: range must be non-NULL with ARE_VALUE endpoints; alphabetsize is
+ *         nonzero for a permitted-alphabet constraint; rbits receives
+ *         range_bits and ebits receives effective_bits; both must be non-NULL.
+ * Returns: No value; writes the calculated PER widths to the output pointers.
+ * Exceptions: None; callers ensure the documented range and pointer inputs.
+ * Responsible party: asn1c maintainers.
+ * History: Isolates X.691 width rules while retaining the original arithmetic.
+ * Example: A 0..65535 value range yields range_bits=16 and effective_bits=16.
+ */
+static void
+calculate_single_member_PER_widths(asn1cnst_range_t *range, int alphabetsize,
+                                   size_t *rbits, ssize_t *ebits) {
+	if(alphabetsize) {
+		/* X.691: 27.5.2 */
+		asn1c_integer_t n = PER_FROM_alphabet_characters(range);
+		*rbits = (n > 0)
+			? asn1p_unsigned_bit_length((asn1c_uinteger_t)(n - 1))
+			: 0;
+	} else if(range->empty_constraint) {
+		*rbits = 0;
+	} else {
+		/* The unsigned span handles the full signed range without overflow. */
+		*rbits = asn1p_range_bit_length(range->left.value,
+		                               range->right.value);
+	}
+
+	if(alphabetsize) {
+		*ebits = (ssize_t)*rbits;
+	} else if(*rbits > 16 || range->right.value >= 65536) {
+		/* X.691, #10.9.4.1 */
+		*ebits = -1;
+	} else {
+		*ebits = (ssize_t)*rbits;
+	}
+}
+
+/*
+ * Purpose: Emit the source range as a courtesy PER constraint comment.
+ * Original source: Existing asn1c PER constraint emitter; extracted in 2026.
+ * Version/date: 1.0, 2026-11-17.
+ * Inputs: arg is the active output context; range is the constraint; type is
+ *         an optional constraint label, or NULL when no label is needed.
+ * Returns: No value; appends the same comment bytes previously emitted inline.
+ * Exceptions: None; arg must be valid and range must be non-NULL.
+ * Responsible party: asn1c maintainers.
+ * History: Extracts the pcmt output block without changing formatting.
+ * Example: A labeled SIZE range emits a comment such as (SIZE(1..5)).
+ */
+static void
+emit_single_member_PER_range_comment(arg_t *arg, asn1cnst_range_t *range,
+                                     const char *type) {
+	if(range->left.type == ARE_VALUE || range->right.type == ARE_VALUE) {
+		OUT("\t/* ");
+		if(type) OUT("(%s", type);
+		OUT("(");
+		if(range->left.type == ARE_VALUE)
+			OUT("%s", asn1p_itoa(range->left.value));
+		else
+			OUT("MIN");
+		OUT("..");
+		if(range->right.type == ARE_VALUE)
+			OUT("%s", asn1p_itoa(range->right.value));
+		else
+			OUT("MAX");
+		if(range->extensible) OUT(",...");
+		if(type) OUT(")");
+		OUT(") */");
+	}
+}
+
+/*
+ * Purpose: Emit one PER constraint record for an ASN.1 range.
+ * Original source: Existing asn1c C backend; PER width logic by mr-j0nes, PR #612.
+ * Version/date: 2.0, 2026-11-17.
+ * Inputs: arg is the valid output context; range is the PER constraint or
+ *         NULL; alphabetsize selects permitted-alphabet handling; type is an
+ *         optional label.
+ * Returns: Zero after emission; current unsupported ranges use unconstrained
+ *          output while preserving any range comment.
+ * Exceptions: None; output errors follow the compiler's normal output path.
+ * Responsible party: asn1c maintainers.
+ * History: Width and courtesy-comment logic are delegated to static helpers.
+ * Example: Emits APC_CONSTRAINED for a concrete INTEGER value range.
+ */
 static int
 emit_single_member_PER_constraint(arg_t *arg, asn1cnst_range_t *range, int alphabetsize, const char *type) {
     if(!range || range->incompatible || range->not_PER_visible) {
@@ -3945,56 +4036,10 @@ emit_single_member_PER_constraint(arg_t *arg, asn1cnst_range_t *range, int alpha
 
     if(range->left.type == ARE_VALUE) {
 		if(range->right.type == ARE_VALUE) {
-			asn1c_integer_t cover = 1;
-			asn1c_integer_t r = 1 + range->right.value
-					      - range->left.value;
 			size_t rbits;	/* Value range bits */
 			ssize_t ebits;	/* Value effective range bits */
-
-			if(range->empty_constraint)
-				r = 0;
-
-			if(alphabetsize) {
-				/* X.691: 27.5.2 */
-				r = PER_FROM_alphabet_characters(range);
-			}
-
-			/* Compute real constraint */
-			for(rbits = 0; rbits < (8 * sizeof(r)); rbits++) {
-				if(r <= cover)
-					break;
-				cover *= 2;	/* Can't do shifting */
-				if(cover < 0) {
-					FATAL("Constraint at line %d too wide "
-						"for %d-bits integer type",
-						arg->expr->_lineno,
-						sizeof(r) * 8);
-					rbits = sizeof(r);
-					break;
-				}
-			}
-
-			if(alphabetsize) {
-				ebits = rbits;
-			} else {
-				/* X.691, #10.9.4.1 */
-				for(ebits = 0; ebits <= 16; ebits++)
-					if(r <= 1 << ebits) break;
-				if(ebits == 17
-				|| range->right.value >= 65536)
-					ebits = -1;
-			if(0) {
-				/* X.691, #10.5.7.1 */
-				for(ebits = 0; ebits <= 8; ebits++)
-					if(r <= 1 << ebits) break;
-				if(ebits == 9) {
-					if(r <= 65536)
-						ebits = 16;
-					else
-						ebits = -1;
-				}
-			}
-			}
+			calculate_single_member_PER_widths(range, alphabetsize,
+			                                   &rbits, &ebits);
 
 			OUT("{ APC_CONSTRAINED%s,%s% d, % d, ",
 				range->extensible
@@ -4027,28 +4072,7 @@ emit_single_member_PER_constraint(arg_t *arg, asn1cnst_range_t *range, int alpha
 	}
 
   pcmt:
-
-	/*
-	 * Print some courtesy debug information.
-	 */
-	if(range->left.type == ARE_VALUE
-	|| range->right.type == ARE_VALUE) {
-		OUT("\t/* ");
-		if(type) OUT("(%s", type);
-		OUT("(");
-		if(range->left.type == ARE_VALUE)
-			OUT("%s", asn1p_itoa(range->left.value));
-		else
-			OUT("MIN");
-		OUT("..");
-		if(range->right.type == ARE_VALUE)
-			OUT("%s", asn1p_itoa(range->right.value));
-		else
-			OUT("MAX");
-		if(range->extensible) OUT(",...");
-		if(type) OUT(")");
-		OUT(") */");
-	}
+	emit_single_member_PER_range_comment(arg, range, type);
 
 	return 0;
 }
@@ -4299,15 +4323,17 @@ emit_member_PER_size_constraints(arg_t *arg, asn1p_expr_t *expr,
 	}
 
 	/*
-	 * UTF8String (SIZE(lb..ub, ...)) has no PER-visible alphabet
+	 * Compatibility profile: UTF8String (SIZE(lb..ub, ...)) has no PER-visible alphabet
 	 * constraint, but its extensible size constraint is still PER-visible.
 	 * Some inputs are reduced to an unconstrained PER range here, which
 	 * makes the generated APER decoder miss the extension bit and fail to
-	 * decode otherwise valid messages.  Fall back to the generic constraint
+	 * decode compatibility-profile messages. X.691 (2021) 30.6 forbids
+	 * this fallback in strict mode. Fall back to the generic constraint
 	 * range only when the PER range has lost the size constraint and there
 	 * is an explicit constraint to recover.
 	 */
-	if((etype & ASN_STRING_MASK)
+	if(!(arg->flags & A1C_STRICT_MODE)
+	&& (etype & ASN_STRING_MASK)
 	&& expr->combined_constraints
 	&& asn1c_per_range_needs_generic_size_fallback(range)) {
 		asn1cnst_range_t *generic_range =
@@ -5729,7 +5755,7 @@ emit_member_encoding_constraints(arg_t *arg, asn1p_expr_t *expr,
     OUT_NOINDENT("#if !defined(ASN_DISABLE_JER_SUPPORT)\n");
 	if(C99_MODE) OUT(".jer_constraints = ");
 	if(arg->flags & A1C_GEN_JER) {
-		if((expr->constraints && expr->expr_type == ASN_BASIC_BIT_STRING)
+		if((expr->constraints && expr_get_type(arg, expr) == ASN_BASIC_BIT_STRING)
 		   || expr->encoding_control.encoding_type == EC_JER_NAME) {
 			OUT("&asn_JER_memb_%s_constr_%d",
 				MKID(expr),
@@ -6185,7 +6211,7 @@ emit_type_DEF(arg_t *arg, asn1p_expr_t *expr, enum tvm_compat tv_mode,
         OUT_NOINDENT("#endif  /* !defined(ASN_DISABLE_UPER_SUPPORT) || !defined(ASN_DISABLE_APER_SUPPORT) */\n");
         OUT_NOINDENT("#if !defined(ASN_DISABLE_JER_SUPPORT)\n");
 		if(arg->flags & A1C_GEN_JER) {
-            if(expr->expr_type == ASN_BASIC_BIT_STRING) {
+            if(terminal_etype == ASN_BASIC_BIT_STRING) {
                 OUT("&asn_JER_type_%s_constr_%d",
 					expr_id, expr->_type_unique_index);
 			} else {

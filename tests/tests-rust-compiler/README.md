@@ -1,5 +1,12 @@
 # Generated Rust compiler tests
 
+With GNU make (including Apple's make), Automake runs the three compiler test
+scripts serially to limit concurrent compiler workloads even under `make -j`.
+Each script defaults `CARGO_BUILD_JOBS` to 1; callers may override it.
+This reduces concurrency after
+external SIGKILLs were observed during a suite run; their cause is unknown.
+Existing failure assertions remain in place.
+
 `check-rust-backend.sh` exercises the first generated Rust slice in a temporary
 directory. Its generated conformance cases cover BOOLEAN, NULL, bounded and
 singleton INTEGER, and a full `i64`-range INTEGER with UPER. It checks CER
@@ -192,7 +199,8 @@ The bounded BIT STRING fixture carries its exact logical bit length alongside
 the packed octets. It checks non-octet standalone vectors, required and OPTIONAL
 SEQUENCE fields, spare codes, truncation, zero padding, resource limits, and
 generated C comparisons. Extensible ranges, disjoint unions, upper bounds at
-65536, and variable `NamedBitList` forms fail before publication.
+65536, and `NamedBitList` forms fail before publication. The Rust JER backend
+also rejects fixed-size `NamedBitList` types during generation.
 Direct ENUMERATED tests cover numeric index ordering, spare indexes,
 singleton framing, budgets, extension rejection, and live C comparisons.
 
@@ -222,6 +230,19 @@ files, interior symlinks, traversal entries, oversized ownership manifests,
 and deterministic regeneration. Runtime-name overlaps are positive compilation
 cases. `LIB`, `Core`, and `Asn1cRuntime` modules are checked for safe filenames
 and pass an offline Cargo check.
+
+`check-rust-constraint-ranges.sh` runs the Rust CLI on reversed INTEGER, SIZE,
+FROM, REAL-component, union, and extension ranges and verifies the shared
+frontend rejects them with exit 65 before publishing a crate. The Rust CLI
+rejects `-fno-constraints` as a C-only option, so that switch cannot bypass the
+shared validation. On builds with `HAVE_128_BIT_INT`, valid native-width
+extrema and values just outside i64 must reach the Rust backend and receive its
+normal unsupported-range diagnostic before publication. This reflects the
+generated Rust INTEGER representation's current i64 bound; it does not imply
+that the Rust runtime supports i128 values. A generated UPER/APER crate checks
+round trips at signed i64 extrema and their neighbours, narrow-range
+constructors, empty input, and a spare constrained-integer code under strict
+Clippy settings.
 
 The harness is registered in the normal test suite. It can also be run from a
 configured build tree with:

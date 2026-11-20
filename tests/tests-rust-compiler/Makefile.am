@@ -1,4 +1,5 @@
-dist_check_SCRIPTS = check-rust-backend.sh check-rust-aliases.sh check-rust-bitsets.sh
+dist_check_SCRIPTS = check-rust-backend.sh check-rust-aliases.sh check-rust-bitsets.sh \
+    check-rust-constraint-ranges.sh check-rust-strict-mode.sh
 TESTS = $(dist_check_SCRIPTS)
 TESTS_ENVIRONMENT = top_srcdir=$(top_srcdir) top_builddir=$(top_builddir)
 
@@ -10,6 +11,10 @@ $(ASN1C):
 # Depend on the compiler through the log list. Naming the individual log target
 # here would override Automake's generated driver recipes for these tests.
 $(TEST_LOGS): $(ASN1C)
+
+# Serialize this directory without overriding Automake's implicit log recipes.
+# Explicit log dependencies prevent its suffix rules from creating test logs.
+.NOTPARALLEL:
 
 EXTRA_DIST = $(srcdir)/WideMixed.asn1 \
     $(srcdir)/WideOptional.asn1 \
@@ -35,6 +40,7 @@ EXTRA_DIST = $(srcdir)/WideMixed.asn1 \
     $(srcdir)/bool_xer_conformance.rs \
     $(srcdir)/bool_wide_conformance.rs \
     $(srcdir)/bool_owned_conformance.rs \
+    $(srcdir)/rust_constraint_ranges_conformance.rs \
     $(srcdir)/c_boolean_storage.c \
     $(srcdir)/CborSlice.asn1 \
     $(srcdir)/CborSequence.asn1 \
@@ -579,3 +585,5 @@ EXTRA_DIST = $(srcdir)/WideMixed.asn1 \
     $(srcdir)/c_nested_ber_cer.c \
     $(srcdir)/coverage.json \
     $(srcdir)/README.md
+
+EXTRA_DIST += $(srcdir)/strict_mode_conformance.rs $(srcdir)/strict_mode_xer.rs
