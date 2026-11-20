@@ -7,6 +7,10 @@
 
 set -eu
 
+# Bound Cargo concurrency by default; callers may select a different limit.
+CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-1}
+export CARGO_BUILD_JOBS
+
 top_srcdir=$(cd "${top_srcdir:-../..}" && pwd)
 top_builddir=$(cd "${top_builddir:-../..}" && pwd)
 test_srcdir="$top_srcdir/tests/tests-rust-compiler"
@@ -774,6 +778,19 @@ for unsupported in ExtensibleString VariableBitsExtensible VariableBitsUnion \
     fi
     test ! -e "$test_tmp/rejected-jer-$unsupported"
 done
+# Fixed NamedBitList types also require semantics outside the Rust JER slice.
+cat >"$test_tmp/FixedNamedBits.asn1" <<'EOF'
+FixedNamedBits DEFINITIONS ::= BEGIN
+Data ::= BIT STRING { flagged(0) } (SIZE(8))
+END
+EOF
+if "$asn1c_bin" --rust -gen-JER -no-gen-UPER -no-gen-CER \
+    -S "$skeletons" -D "$test_tmp/rejected-fixed-named-bits" \
+    "$test_tmp/FixedNamedBits.asn1" >"$test_tmp/rejected-fixed-named-bits.log" 2>&1; then
+    echo "FAIL: Rust JER generation accepted fixed BIT STRING with named bits"
+    exit 1
+fi
+test ! -e "$test_tmp/rejected-fixed-named-bits"
 if "$asn1c_bin" --rust -gen-JER -gen-OER -no-gen-UPER -no-gen-CER \
     -S "$skeletons" -D "$test_tmp/rejected-octet-jer-oer" \
     "$test_srcdir/OctetJER.asn1" >"$test_tmp/rejected-octet-jer-oer.log" 2>&1; then

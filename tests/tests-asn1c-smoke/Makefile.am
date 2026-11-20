@@ -45,12 +45,15 @@ TESTS += check-CER.sh
 TESTS += check-gen-autotools.sh
 TESTS += check-PER-single-flavor.sh
 TESTS += check-JER-multi-pdu.sh
+TESTS += check-issue-617.sh
 TESTS += check-BER-retag.sh
 TESTS += check-issue-588.sh
 TESTS += check-issue-587.sh
 TESTS += check-integer-native-dist.sh
 TESTS += check-issue-607.sh
 TESTS += check-issue-596.sh
+TESTS += check-strict-mode.sh
+TESTS += check-strict-mode-cli.sh
 
 CLEANFILES = Makefile.am.* *.[acho] check-*.log check-*.trs
 
@@ -63,3 +66,5 @@ EXTRA_DIST = README $(srcdir)/check-*.sh $(srcdir)/data/fprefix-link.asn \
 
 clean-local:
 	rm -rf test-*
+
+EXTRA_DIST += $(srcdir)/data/strict-mode.asn1 $(srcdir)/data/strict-mode.c

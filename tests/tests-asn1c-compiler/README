@@ -47,3 +47,43 @@ with the DEFAULT. The three stale expressions caused all jobs in CI run
 the canonical omission fix, runtime validation, and every comparison check;
 it introduces no production-code or input-validation change. Validate it with
 make -C tests/tests-asn1c-compiler check, including the full parsing inventory.
+
+The reversed-range regression checks malformed value, SIZE, FROM, union,
+extension, and REAL component intervals for a normal diagnostic exit, with
+valid neighbouring intervals and alphabet sets as controls (issue #605).
+It uses a POSIX shell watchdog; GNU timeout is not required for this check.
+WATCHDOG_DEADLINE overrides its ten-second compiler deadline and must be a
+canonical decimal integer from 1 through 3600 (no sign or leading zero).
+Invalid values fail with status 2 before temporary files or children are
+created. Run the focused check from the repository root with:
+
+    make -C tests/tests-asn1c-compiler check TESTS=check-reversed-ranges.sh
+
+The watchdog self-tests cover prompt completion, hanging compilers, graceful
+TERM exits with status 0 and 65, KILL escalation, and invalid deadline input.
+Fake compilers either exec their sleeper or kill and reap it before exiting,
+so self-tests do not deliberately leave background children behind. Prompt
+completion uses a ten-second allowance; timeout cases use three seconds to
+allow scheduling headroom while keeping the focused check short.
+
+Security scope: the watchdog bounds a direct compiler process, not an
+arbitrary process tree. It uses numeric PIDs and separate cancellation-file
+checks and signals; these POSIX shell operations are not atomic process
+identity guarantees. Do not use it to supervise hostile commands. A deadline
+marker always makes the case fail, including when TERM is handled gracefully.
+
+The boundary-range regression checks termination at the compiler integer
+limits, the emitted PER width for the full signed 64-bit range and
+0..INTMAX_MAX, and neighbouring bounds (issues #607 and #611). It checks both
+range_bits and effective_bits at singleton, 16-bit, and 17-bit boundaries.
+The original PER width correction is by Javier (@mr-j0nes), PR #612.
+That check uses a
+POSIX sleep/kill watchdog as well, so it needs no GNU timeout;
+WATCHDOG_DEADLINE overrides its ten-second deadline (canonical decimal,
+1 through 3600) and the script self-tests the deadline, TERM and KILL
+paths with fake compilers, including reaping timer sleeps and deferring signal
+exits until child PIDs are recorded. Like the reversed-range watchdog it bounds a
+direct compiler process, not an arbitrary process tree. Run the focused
+check from the repository root with:
+
+    make -C tests/tests-asn1c-compiler check TESTS=check-boundary-ranges.sh
