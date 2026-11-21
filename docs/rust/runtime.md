@@ -37,13 +37,13 @@ The central operation table has type operations, lifecycle helpers, and
 per-codec function pointers. A type descriptor carries tags, encoding
 constraints, member tables, and type-specific data; a member carries its type,
 tag, optional/default metadata, constraints, and optional open-type selector
-([skeletons/constr_TYPE.h:194-299](../../skeletons/constr_TYPE.h#L194)).
+([skeletons/constr_TYPE.h:194-301](../../skeletons/constr_TYPE.h#L194)).
 
 Generated metadata is more than a list of fields. It includes tag-to-member
 maps, root/extension boundaries, optional-member maps, CHOICE selection maps,
 and IO-set selector hooks. The C generator emits these tables in
-libasn1compiler/asn1c_C.c, including SEQUENCE specifics at lines 704-736 and
-CHOICE specifics at lines 1650-1681. Rust should preserve their meaning while
+libasn1compiler/asn1c_C.c, including SEQUENCE specifics at lines 728-753 and
+CHOICE specifics at lines 2171-2196. Rust should preserve their meaning while
 replacing C offsets, pointer flags, and raw function-pointer layouts with safe
 generated field access and typed metadata.
 
@@ -51,7 +51,7 @@ The current C value model covers the following families. These are proposed
 Rust value mappings, not a claim that each C type has every codec operation.
 The C operation tables and skeleton library source list are the sources of
 truth for the current type/syntax intersections
-([skeletons/Makefile.am:38-274](../../skeletons/Makefile.am#L38)).
+([skeletons/Makefile.am:38-279](../../skeletons/Makefile.am#L38)).
 
 | ASN.1 family | Proposed Rust representation |
 | --- | --- |
@@ -86,7 +86,7 @@ skeletons/UTF8String.c and skeletons/PrintableString.c.
 INTEGER currently has a byte-buffer representation, whereas the compiler may
 select fixed-width native storage for some integer types
 ([skeletons/INTEGER.h](../../skeletons/INTEGER.h),
-libasn1compiler/asn1c_C.c:121-135). Keep both paths explicit in generated
+libasn1compiler/asn1c_C.c:136-156). Keep both paths explicit in generated
 Rust metadata. OBJECT IDENTIFIER arcs are uint32_t in the current C header
 ([skeletons/OBJECT_IDENTIFIER.h:16-20](../../skeletons/OBJECT_IDENTIFIER.h#L16)).
 REAL is represented by the C primitive byte-buffer type, while NativeReal uses
@@ -135,14 +135,14 @@ whether each C entry point is complete-message, prefix, callback, or
 restartable, together with its consumption units and partial-state contract.
 uper_decoder.c calls its PER codec non-restartable and reports the failure
 position when more input is needed
-([skeletons/uper_decoder.c:155-174](../../skeletons/uper_decoder.c#L155)).
+([skeletons/uper_decoder.c:162-183](../../skeletons/uper_decoder.c#L162)).
 Parity means preserving those contracts with bounded behavior. A persistent
 session API for every codec, including resumable PER, may be prototyped as a
 later improvement; codec coverage does not require it.
 
 The C constraint contract is a per-type callback, with a general
 asn_check_constraints entry point
-([skeletons/constraints.h:17-54](../../skeletons/constraints.h#L17)).
+([skeletons/constraints.h:17-78](../../skeletons/constraints.h#L17)).
 The Rust design should keep schema constraints in generated metadata, apply
 them during codec operations where required, and provide a separate complete
 value validation entry point. Do not turn an unknown constraint into success
@@ -216,11 +216,14 @@ policy. Generated known open types should use their IO-set selector; unknown
 open types should remain opaque and round-trip when enough wire context is
 available. Apply resource limits before retaining payloads.
 
-The existing C PER SET implementation documents a root-only limitation in its
-SET codec. This is evidence for a current C boundary, not a reason to infer
-that all extensible SET schemas are supported
-([skeletons/constr_SET_uper.c:84-85](../../skeletons/constr_SET_uper.c#L84)).
-Every such boundary must be recorded in the stage-one coverage manifest.
+The C PER SET codec once documented a root-only limitation. It now validates
+root and extension maps
+([skeletons/constr_SET_uper.c:96-134](../../skeletons/constr_SET_uper.c#L96))
+and supports individual extension additions and addition groups, as described
+in [the SET extension-group notes](../set-extension-groups.md). C support is
+still evidence for a C boundary only, not a reason to infer that the Rust
+backend supports the same extensible SET schemas. Every such boundary must be
+recorded in the stage-one coverage manifest.
 
 ## Delivery slices
 

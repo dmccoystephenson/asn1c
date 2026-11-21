@@ -36,15 +36,15 @@ option must validate a compatible runtime version and API.
 ## C codec dispatch and converter inventory
 
 The C compiler defaults to its current codec family set in
-[`asn1c/asn1c.c`](../../asn1c/asn1c.c#L176). Its `-gen-*` parser supports BER,
+[`asn1c/asn1c.c`](../../asn1c/asn1c.c#L177). Its `-gen-*` parser supports BER,
 CER, XER, JER, CBOR, OER, UPER, and APER; DER remains the BER family's encoder
-rule ([`asn1c/asn1c.c`](../../asn1c/asn1c.c#L266)). CER encoding is selected by
+rule ([`asn1c/asn1c.c`](../../asn1c/asn1c.c#L276)). CER encoding is selected by
 `-gen-CER` and can be disabled with `-no-gen-CER`. CER shares BER-family
 runtime dependencies. A generated type's operation table has separate decoder
 and encoder pointers for BER/DER, OER, UPER, APER, and CBOR, guarded by build
 feature macros and generation flags
 ([`constr_TYPE.h`](../../skeletons/constr_TYPE.h#L200),
-[`asn1c_C.c`](../../libasn1compiler/asn1c_C.c#L3019)). Thus, codec coverage
+[`asn1c_C.c`](../../libasn1compiler/asn1c_C.c#L3587)). Thus, codec coverage
 must be measured by type, direction, syntax variant, and feature, not by the
 presence of a family name alone.
 
@@ -57,11 +57,10 @@ presence of a family name alone.
 | APER basic / canonical | Both labels call the same APER encoder or complete decoder. |
 | `ATS_CBOR` | Calls the CBOR encoder or decoder when its feature is built. |
 
-These shared branches are in the generic transfer-syntax dispatcher at
-[`asn_application.c`](../../skeletons/asn_application.c#L285),
-[`asn_application.c`](../../skeletons/asn_application.c#L343),
-[`asn_application.c`](../../skeletons/asn_application.c#L473), and
-[`asn_application.c`](../../skeletons/asn_application.c#L563).
+These shared branches are in the generic transfer-syntax dispatchers: the
+encoder family selector
+[`asn_encode_family()`](../../skeletons/asn_application.c#L839) and the decoder
+switch in [`asn_decode()`](../../skeletons/asn_application.c#L989).
 
 The C runtime provides `cer_encode()` and generic `asn_encode(ATS_CER, ...)`;
 the generated converter accepts `-ocer`. For input, `ATS_CER` and `-icer`
@@ -90,9 +89,9 @@ JER, and CBOR; outputs are DER, OER, PER/UPER, APER, XER, JER, CBOR, text,
 and null. The converter provides `ber` and `der` input aliases that invoke
 the BER decoder pointer and a `cer` alias for strict CER, then call
 `asn_decode()`
-([`converter-example.c`](../../skeletons/converter-example.c#L155),
-[`converter-example.c`](../../skeletons/converter-example.c#L174),
-[`converter-example.c`](../../skeletons/converter-example.c#L827)). Its OER,
+([`converter-example.c`](../../skeletons/converter-example.c#L157),
+[`converter-example.c`](../../skeletons/converter-example.c#L161),
+[`converter-example.c`](../../skeletons/converter-example.c#L846)). Its OER,
 PER, and APER output labels select canonical syntax values. The CER input
 selector uses strict `cer_decode()` and is not restartable.
 
@@ -104,24 +103,24 @@ standard namespaces, and runs the fixer before invoking
 consumes the resolved tree, including references, specializations, tags,
 constraints,
 extension markers, imports, and information-object metadata. See the driver
-flow at [`asn1c/asn1c.c`](../../asn1c/asn1c.c#L947), tree fixing at
-[`asn1c/asn1c.c`](../../asn1c/asn1c.c#L1003), and backend dispatch at
-[`asn1c/asn1c.c`](../../asn1c/asn1c.c#L1025).
+flow at [`asn1c/asn1c.c`](../../asn1c/asn1c.c#L1082), tree fixing at
+[`asn1c/asn1c.c`](../../asn1c/asn1c.c#L1046), and backend dispatch at
+[`asn1c/asn1c.c`](../../asn1c/asn1c.c#L1105).
 
 The old target-language table is not a decoupled backend interface.
 [`asn1c_lang.h`](../../libasn1compiler/asn1c_lang.h#L6) stores one callback per
 expression kind, and [`asn1c_lang.c`](../../libasn1compiler/asn1c_lang.c#L7)
 accepts only C. The new public dispatch in
-[`asn1compiler.c`](../../libasn1compiler/asn1compiler.c#L42) selects the
+[`asn1compiler.c`](../../libasn1compiler/asn1compiler.c#L43) selects the
 standalone Rust backend before entering the existing C-only pipeline. C
 visitors still write to
 [`asn1c_out.h`](../../libasn1compiler/asn1c_out.h#L14)'s C-oriented include,
 declaration, table, and code streams. The C visitors in
-[`asn1c_C.c`](../../libasn1compiler/asn1c_C.c#L152) call C type naming,
+[`asn1c_C.c`](../../libasn1compiler/asn1c_C.c#L507) call C type naming,
 descriptor, and skeleton helpers directly.
 
 The writer is also C-specific.
-[`asn1c_save.c`](../../libasn1compiler/asn1c_save.c#L620) creates one `.c` and
+[`asn1c_save.c`](../../libasn1compiler/asn1c_save.c#L644) creates one `.c` and
 one `.h` per generated top-level type, writes C preambles and include guards,
 and emits C support files and Makefile fragments.
 [`asn1c_fdeps.c`](../../libasn1compiler/asn1c_fdeps.c#L76) reads a tagged
